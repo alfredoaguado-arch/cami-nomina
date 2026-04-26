@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#1A1A18"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#F5F3EE;--card:#fff;--border:#D3D1C7;--text:#1A1A18;--muted:#888780;--dark:#1A1A18;--light:#EFEFED;--err-bg:#FCEBEB;--err:#A32D2D;--ok-bg:#EAF3DE;--ok:#3B6D11;}
+:root{--bg:#F5F3EE;--card:#fff;--border:#D3D1C7;--text:#1A1A18;--muted:#888780;--dark:#1A1A18;--light:#EFEFED;--err-bg:#FCEBEB;--err:#A32D2D;--ok-bg:#EAF3DE;--ok:#3B6D11;--warn-bg:#FAEEDA;--warn:#854F0B;--info-bg:#E6F1FB;--info:#0C447C;}
 body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;}
 
 /* ── TOPBAR ── */
@@ -25,21 +25,16 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .back-btn{background:none;border:0.5px solid #444;border-radius:6px;color:#fff;padding:6px 10px;font-family:inherit;font-size:11px;letter-spacing:.06em;cursor:pointer;}
 .back-btn:active{background:#333;}
 
-/* ── TABS (placeholder, fase 1 solo RH) ── */
+/* ── TABS ── */
 .tabs{background:#fff;border-bottom:0.5px solid var(--border);display:flex;overflow-x:auto;scrollbar-width:none;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{flex-shrink:0;padding:14px 18px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;background:none;font-family:inherit;}
 .tab.active{color:var(--text);border-bottom-color:var(--dark);font-weight:700;}
-.tab.disabled{color:#c5c3bb;cursor:not-allowed;}
 
 /* ── CONTAINER ── */
 .container{padding:16px;max-width:760px;margin:0 auto;}
 
-/* ── FILTER BAR ── */
-.filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
-.filter-row{display:flex;gap:8px;align-items:center;}
-.search-box{flex:1;background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px 14px;font-family:inherit;font-size:13px;color:var(--text);outline:none;}
-.search-box:focus{border-color:var(--dark);}
+/* ── BUTTONS ── */
 .btn{background:var(--dark);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-family:inherit;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;cursor:pointer;white-space:nowrap;}
 .btn:active{transform:scale(.97);}
 .btn-secondary{background:#fff;color:var(--text);border:0.5px solid var(--border);}
@@ -47,11 +42,19 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .btn-danger{background:var(--err);color:#fff;}
 .btn-success{background:var(--ok);color:#fff;}
 .btn-sm{padding:8px 12px;font-size:11px;}
+.btn-block{width:100%;display:block;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+/* ── FILTER / SEARCH BAR ── */
+.filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.filter-row{display:flex;gap:8px;align-items:center;}
+.search-box{flex:1;background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px 14px;font-family:inherit;font-size:13px;color:var(--text);outline:none;}
+.search-box:focus{border-color:var(--dark);}
 .filter-pills{display:flex;gap:6px;}
 .pill{background:var(--card);border:0.5px solid var(--border);border-radius:20px;padding:6px 14px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;color:var(--muted);font-family:inherit;}
 .pill.active{background:var(--dark);color:#fff;border-color:var(--dark);}
 
-/* ── EMPLOYEE LIST ── */
+/* ── EMPLOYEE LIST (RH) ── */
 .section-header{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin:18px 0 10px;display:flex;justify-content:space-between;align-items:center;}
 .emp-list{display:flex;flex-direction:column;gap:8px;}
 .emp-card{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .1s;}
@@ -60,8 +63,8 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .emp-name{font-size:13px;font-weight:700;letter-spacing:.02em;line-height:1.3;}
 .emp-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:10px;color:var(--muted);}
 .emp-tag{background:var(--light);padding:2px 8px;border-radius:10px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;}
-.emp-tag.imss{background:#E6F1FB;color:#0C447C;}
-.emp-tag.no-imss{background:#FAEEDA;color:#854F0B;}
+.emp-tag.imss{background:var(--info-bg);color:var(--info);}
+.emp-tag.no-imss{background:var(--warn-bg);color:var(--warn);}
 .emp-tag.inactivo{background:var(--err-bg);color:var(--err);}
 .emp-tag.sin-tarifa{background:var(--err-bg);color:var(--err);}
 .emp-money{font-size:11px;color:var(--muted);margin-top:6px;}
@@ -95,7 +98,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .detail-value{font-weight:700;text-align:right;}
 
 /* ── TOAST ── */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dark);color:#fff;padding:12px 20px;border-radius:8px;font-size:12px;letter-spacing:.04em;z-index:100;opacity:0;transition:opacity .2s;pointer-events:none;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dark);color:#fff;padding:12px 20px;border-radius:8px;font-size:12px;letter-spacing:.04em;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;text-align:center;max-width:90%;}
 .toast.show{opacity:1;}
 .toast.error{background:var(--err);}
 .toast.success{background:var(--ok);}
@@ -105,16 +108,85 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .no-access-icon{font-size:32px;margin-bottom:14px;}
 .no-access-title{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;}
 .no-access-msg{font-size:12px;color:var(--muted);line-height:1.6;}
+
+/* ── SUPERVISOR: capturas list ── */
+.cap-card{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:14px;margin-bottom:8px;cursor:pointer;}
+.cap-card:active{background:var(--light);}
+.cap-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;}
+.cap-proj{font-size:14px;font-weight:700;letter-spacing:.04em;}
+.cap-quin{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+.cap-status{font-size:10px;padding:3px 10px;border-radius:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;}
+.cap-status.BORRADOR  {background:var(--light);color:var(--muted);}
+.cap-status.ENVIADA   {background:var(--info-bg);color:var(--info);}
+.cap-status.RECHAZADA {background:var(--err-bg);color:var(--err);}
+.cap-status.APROBADA  {background:var(--ok-bg);color:var(--ok);}
+.cap-meta{font-size:11px;color:var(--muted);}
+
+/* ── CAPTURA DETAIL: empleados ── */
+.cap-toolbar{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;}
+.cap-toolbar-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;}
+.cap-toolbar-row:last-child{margin-bottom:0;}
+.cap-info{font-size:11px;color:var(--muted);}
+.cap-info b{color:var(--text);font-weight:700;}
+
+.empleado-cap{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.empleado-cap-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
+.empleado-cap-name{font-size:13px;font-weight:700;line-height:1.3;flex:1;}
+.empleado-cap-quitar{background:none;border:none;color:var(--err);font-size:18px;cursor:pointer;padding:4px 6px;line-height:1;}
+
+.calendario{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:10px;}
+.dia-btn{aspect-ratio:1;border:0.5px solid var(--border);border-radius:6px;background:var(--bg);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;}
+.dia-btn:active{transform:scale(.94);}
+.dia-num{font-size:9px;color:var(--muted);font-weight:400;}
+.dia-mark{font-size:13px;}
+.dia-btn.T{background:#3B6D11;color:#fff;border-color:#3B6D11;}
+.dia-btn.D{background:#888780;color:#fff;border-color:#888780;}
+.dia-btn.F{background:#A32D2D;color:#fff;border-color:#A32D2D;}
+.dia-btn.B{background:#1A1A18;color:#fff;border-color:#1A1A18;}
+
+.subsec{margin-top:10px;}
+.subsec-title{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
+.subsec-add{background:none;border:0.5px solid var(--border);border-radius:6px;padding:3px 10px;font-family:inherit;font-size:10px;cursor:pointer;color:var(--text);}
+.subsec-add:active{background:var(--light);}
+.subsec-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--bg);border-radius:5px;margin-bottom:4px;font-size:11px;}
+.subsec-item-info{flex:1;}
+.subsec-item-monto{font-weight:700;margin-right:10px;}
+.subsec-item-actions{display:flex;gap:4px;}
+.subsec-item-actions button{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:var(--muted);}
+
+.empleado-cap-total{display:flex;justify-content:space-between;align-items:center;padding-top:10px;margin-top:10px;border-top:0.5px solid var(--border);}
+.empleado-cap-total-label{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+.empleado-cap-total-value{font-size:15px;font-weight:700;}
+
+/* ── FAB ── */
+.fab-bar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent 0%,var(--bg) 30%);padding:14px 0 6px;margin:0 -16px;display:flex;gap:8px;justify-content:center;}
+.fab-bar > *{flex:1;max-width:240px;}
+
+/* ── DAY MENU MODAL ── */
+.daymenu-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.daymenu-btn{padding:18px 12px;border-radius:10px;border:0.5px solid var(--border);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;background:var(--card);text-align:center;letter-spacing:.04em;}
+.daymenu-btn:active{transform:scale(.96);}
+.daymenu-btn.T{background:#3B6D11;color:#fff;border-color:#3B6D11;}
+.daymenu-btn.D{background:#888780;color:#fff;border-color:#888780;}
+.daymenu-btn.F{background:#A32D2D;color:#fff;border-color:#A32D2D;}
+.daymenu-btn.B{background:#1A1A18;color:#fff;border-color:#1A1A18;}
+.daymenu-btn.X{grid-column:1/-1;}
+
+/* ── EMPTY STATE ── */
+.empty-state{padding:32px 16px;text-align:center;}
+.empty-state-icon{font-size:32px;margin-bottom:10px;}
+.empty-state-title{font-size:13px;font-weight:700;margin-bottom:4px;}
+.empty-state-msg{font-size:11px;color:var(--muted);line-height:1.5;}
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="topbar-left">
-    <button class="back-btn" onclick="volverHub()">←</button>
+    <button class="back-btn" id="topbar-back" onclick="onBack()">←</button>
     <div>
       <div class="logo-text">CAMI</div>
-      <div class="module-name">Nómina · Catálogo</div>
+      <div class="module-name" id="topbar-subtitle">Nómina</div>
     </div>
   </div>
   <div class="topbar-right">
@@ -123,59 +195,82 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
 </div>
 
-<div class="tabs" id="tabs">
-  <button class="tab active" data-tab="rh">Catálogo RH</button>
-</div>
+<div class="tabs" id="tabs"></div>
 
-<!-- Sin acceso -->
+<!-- Sin acceso global -->
 <div id="no-access" class="no-access" style="display:none">
   <div class="no-access-icon">🔒</div>
   <div class="no-access-title">Sin acceso</div>
   <div class="no-access-msg">Tu cuenta no tiene permisos para este módulo.<br>Contacta al administrador.</div>
 </div>
 
-<!-- Panel RH -->
+<!-- ═══ PANEL RH ═══ -->
 <div id="panel-rh" class="container" style="display:none">
-
   <div class="filter-bar">
     <div class="filter-row">
-      <input type="text" class="search-box" id="search" placeholder="Buscar por nombre, CURP, RFC..." oninput="renderLista()"/>
-      <button class="btn" onclick="abrirNuevo()">+ Nuevo</button>
+      <input type="text" class="search-box" id="search-emp" placeholder="Buscar por nombre, CURP, RFC..." oninput="renderListaEmp()"/>
+      <button class="btn" onclick="abrirNuevoEmp()">+ Nuevo</button>
     </div>
     <div class="filter-pills">
-      <button class="pill active" data-filter="activos" onclick="setFiltro('activos')">Activos</button>
-      <button class="pill" data-filter="inactivos" onclick="setFiltro('inactivos')">Inactivos</button>
-      <button class="pill" data-filter="todos" onclick="setFiltro('todos')">Todos</button>
+      <button class="pill active" data-filter="activos"   onclick="setFiltroEmp('activos')">Activos</button>
+      <button class="pill"        data-filter="inactivos" onclick="setFiltroEmp('inactivos')">Inactivos</button>
+      <button class="pill"        data-filter="todos"     onclick="setFiltroEmp('todos')">Todos</button>
     </div>
   </div>
-
   <div class="section-header">
-    <span id="count-label">Cargando...</span>
+    <span id="count-emp">Cargando...</span>
     <button class="btn btn-secondary btn-sm" onclick="cargarEmpleados()">↻ Recargar</button>
   </div>
-
-  <div id="lista" class="emp-list"></div>
-
+  <div id="lista-emp" class="emp-list"></div>
 </div>
 
-<!-- Modal: Crear / Editar -->
-<div class="modal-bg" id="modal-form">
+<!-- ═══ PANEL SUPERVISOR — LISTA ═══ -->
+<div id="panel-sup" class="container" style="display:none">
+  <div class="cap-toolbar">
+    <div class="cap-toolbar-row">
+      <span class="cap-info">Quincena vigente: <b id="quin-vigente">—</b></span>
+      <button class="btn btn-sm" onclick="abrirNuevaCap()">+ Nueva</button>
+    </div>
+    <div class="cap-toolbar-row">
+      <span class="cap-info" id="quin-fechas">—</span>
+    </div>
+  </div>
+  <div class="section-header">
+    <span id="count-cap">Mis capturas</span>
+    <button class="btn btn-secondary btn-sm" onclick="cargarCapturas()">↻ Recargar</button>
+  </div>
+  <div id="lista-cap"></div>
+</div>
+
+<!-- ═══ PANEL SUPERVISOR — DETALLE DE CAPTURA ═══ -->
+<div id="panel-cap" class="container" style="display:none">
+  <div class="cap-toolbar" id="cap-detail-header"></div>
+  <div class="section-header">
+    <span id="count-emp-cap">Empleados</span>
+    <button class="btn btn-sm" onclick="abrirAgregarEmp()">+ Agregar</button>
+  </div>
+  <div id="lista-emp-cap"></div>
+  <div class="fab-bar" id="fab-bar-cap"></div>
+</div>
+
+<!-- ═══ MODAL: form de empleado (RH) ═══ -->
+<div class="modal-bg" id="modal-form-emp">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="modal-form-title">Nuevo empleado</div>
-      <button class="modal-close" onclick="cerrarForm()">×</button>
+      <div class="modal-title" id="modal-form-emp-title">Nuevo empleado</div>
+      <button class="modal-close" onclick="cerrarFormEmp()">×</button>
     </div>
     <div class="modal-body">
       <div class="field">
         <label class="field-label">Nombre completo *</label>
-        <input class="field-input" id="f-nombre" autocomplete="off" placeholder="APELLIDO PATERNO MATERNO NOMBRE(S)"/>
+        <input class="field-input" id="f-nombre" autocomplete="off"/>
       </div>
       <div class="field-row">
         <div class="field">
           <label class="field-label">Tipo *</label>
           <select class="field-select" id="f-tipo" onchange="onTipoChange()">
-            <option value="IMSS">IMSS (con tope fiscal)</option>
-            <option value="NO_IMSS">NO IMSS (todo directo)</option>
+            <option value="IMSS">IMSS</option>
+            <option value="NO_IMSS">NO IMSS</option>
           </select>
         </div>
         <div class="field">
@@ -210,8 +305,8 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
       <div class="field-row">
         <div class="field">
           <label class="field-label">Tarifa diaria *</label>
-          <input class="field-input" id="f-tarifa" type="number" step="0.01" min="0" placeholder="0.00"/>
-          <div class="field-help">Lo que paga CAMI por día trabajado</div>
+          <input class="field-input" id="f-tarifa" type="number" step="0.01" min="0"/>
+          <div class="field-help">CAMI paga por día trabajado</div>
         </div>
         <div class="field" id="f-block-tope">
           <label class="field-label">Tope IMSS quincenal</label>
@@ -225,21 +320,136 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="cerrarForm()">Cancelar</button>
-      <button class="btn" id="btn-guardar" onclick="guardar()">Guardar</button>
+      <button class="btn btn-secondary" onclick="cerrarFormEmp()">Cancelar</button>
+      <button class="btn" id="btn-guardar-emp" onclick="guardarEmp()">Guardar</button>
     </div>
   </div>
 </div>
 
-<!-- Modal: Detalle -->
-<div class="modal-bg" id="modal-detalle">
+<!-- ═══ MODAL: detalle de empleado (RH) ═══ -->
+<div class="modal-bg" id="modal-detalle-emp">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Detalle del empleado</div>
-      <button class="modal-close" onclick="cerrarDetalle()">×</button>
+      <button class="modal-close" onclick="cerrarDetalleEmp()">×</button>
     </div>
-    <div class="modal-body" id="detalle-body"></div>
-    <div class="modal-actions" id="detalle-actions"></div>
+    <div class="modal-body" id="detalle-emp-body"></div>
+    <div class="modal-actions" id="detalle-emp-actions"></div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: nueva captura ═══ -->
+<div class="modal-bg" id="modal-nueva-cap">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Nueva captura de nómina</div>
+      <button class="modal-close" onclick="cerrarNuevaCap()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Quincena</label>
+        <input class="field-input" id="nc-quincena" disabled/>
+      </div>
+      <div class="field">
+        <label class="field-label">Proyecto</label>
+        <select class="field-select" id="nc-proyecto"></select>
+        <div class="field-help">Solo se muestran tus obras asignadas</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarNuevaCap()">Cancelar</button>
+      <button class="btn" id="btn-crear-cap" onclick="crearCaptura()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: agregar empleado a captura ═══ -->
+<div class="modal-bg" id="modal-add-emp">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Agregar empleado</div>
+      <button class="modal-close" onclick="cerrarAgregarEmp()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <input class="field-input" id="add-emp-search" placeholder="Buscar empleado..." oninput="filtrarAddEmp()"/>
+      </div>
+      <div id="add-emp-lista"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarAgregarEmp()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: marcar día (menú) ═══ -->
+<div class="modal-bg" id="modal-day">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-day-title">Día</div>
+      <button class="modal-close" onclick="cerrarMenuDia()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="daymenu-grid">
+        <button class="daymenu-btn T" onclick="setMarcaDia('T')">Trabajó</button>
+        <button class="daymenu-btn D" onclick="setMarcaDia('D')">Descanso</button>
+        <button class="daymenu-btn F" onclick="setMarcaDia('F')">Falta</button>
+        <button class="daymenu-btn B" onclick="setMarcaDia('B')">Baja</button>
+        <button class="daymenu-btn X" onclick="setMarcaDia('')">Limpiar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: extras ═══ -->
+<div class="modal-bg" id="modal-extra">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Horas extras</div>
+      <button class="modal-close" onclick="cerrarExtra()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Horas</label>
+        <input class="field-input" type="number" step="0.5" min="0" id="ex-horas"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Monto total acordado</label>
+        <input class="field-input" type="number" step="0.01" min="0" id="ex-monto"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Descripción (opcional)</label>
+        <input class="field-input" id="ex-desc" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarExtra()">Cancelar</button>
+      <button class="btn" onclick="guardarExtra()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: viáticos ═══ -->
+<div class="modal-bg" id="modal-via">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Viáticos</div>
+      <button class="modal-close" onclick="cerrarViatico()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Concepto</label>
+        <input class="field-input" id="via-concepto" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Monto</label>
+        <input class="field-input" type="number" step="0.01" min="0" id="via-monto"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarViatico()">Cancelar</button>
+      <button class="btn" onclick="guardarViatico()">Guardar</button>
+    </div>
   </div>
 </div>
 
@@ -251,10 +461,24 @@ const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzseOJqiT5sIlFNYSXQ
 const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
 
 // ═══ ESTADO ═══════════════════════════════════════════════════════════════════
-let session     = null;
-let empleados   = [];
-let filtro      = 'activos';
-let editandoId  = null;
+let session = null;
+let tieneRH = false, tieneSup = false;
+let vista = 'rh'; // 'rh' | 'sup' | 'cap-detail'
+
+// RH
+let empleados = [];
+let filtroEmp = 'activos';
+let editandoEmpId = null;
+
+// Supervisor
+let proyectosAsignados = [];
+let quincenaVigente = null;
+let capturas = [];
+let capturaActual = null;          // captura abierta en panel-cap
+let datosCaptura = null;           // {captura, quincena, empleados, dias, extras, viaticos}
+let dayMenuCtx = null;             // {empleado_id, dia_offset}
+let extraCtx = null;               // {empleado_id, extra_id?}
+let viaticoCtx = null;             // {empleado_id, viatico_id?}
 
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
@@ -262,37 +486,75 @@ window.addEventListener('DOMContentLoaded', init);
 function init() {
   const raw = sessionStorage.getItem('cami_session');
   if (!raw) { window.location.href = HUB_URL; return; }
-  try {
-    session = JSON.parse(raw);
-  } catch(e) {
-    sessionStorage.removeItem('cami_session');
-    window.location.href = HUB_URL;
-    return;
-  }
+  try { session = JSON.parse(raw); }
+  catch(e) { sessionStorage.removeItem('cami_session'); window.location.href = HUB_URL; return; }
 
   document.getElementById('topbar-user').textContent = session.nombre || '—';
   document.getElementById('topbar-role').textContent = session.rol    || '—';
 
   const apps = session.apps || [];
-  const tieneRH = apps.indexOf('nomina-rh') >= 0;
+  tieneRH  = apps.indexOf('nomina-rh') >= 0;
+  tieneSup = apps.indexOf('nomina-supervisor') >= 0;
 
-  if (!tieneRH) {
+  if (!tieneRH && !tieneSup) {
     document.getElementById('no-access').style.display = 'block';
     return;
   }
 
-  document.getElementById('panel-rh').style.display = 'block';
-  cargarEmpleados();
+  buildTabs();
+  if (tieneSup) cambiarVista('sup');
+  else          cambiarVista('rh');
 }
 
-function volverHub() { window.location.href = HUB_URL; }
+function buildTabs() {
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = '';
+  if (tieneSup) {
+    const t = document.createElement('button');
+    t.className = 'tab'; t.dataset.tab = 'sup';
+    t.textContent = 'Mis capturas';
+    t.onclick = () => cambiarVista('sup');
+    tabs.appendChild(t);
+  }
+  if (tieneRH) {
+    const t = document.createElement('button');
+    t.className = 'tab'; t.dataset.tab = 'rh';
+    t.textContent = 'Catálogo RH';
+    t.onclick = () => cambiarVista('rh');
+    tabs.appendChild(t);
+  }
+}
+
+function cambiarVista(v) {
+  vista = v;
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === v));
+  document.getElementById('panel-rh').style.display  = (v === 'rh')  ? 'block' : 'none';
+  document.getElementById('panel-sup').style.display = (v === 'sup') ? 'block' : 'none';
+  document.getElementById('panel-cap').style.display = (v === 'cap-detail') ? 'block' : 'none';
+
+  document.getElementById('topbar-subtitle').textContent =
+    v === 'rh' ? 'Nómina · Catálogo' :
+    v === 'sup' ? 'Nómina · Capturas' :
+    'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '');
+
+  if (v === 'rh' && empleados.length === 0)        cargarEmpleados();
+  if (v === 'sup')                                 initSupervisor();
+  if (v === 'cap-detail' && capturaActual)         cargarCaptura(capturaActual);
+}
+
+function onBack() {
+  if (vista === 'cap-detail') { cambiarVista('sup'); return; }
+  window.location.href = HUB_URL;
+}
 
 // ═══ API ══════════════════════════════════════════════════════════════════════
 async function callBackend(action, payload) {
-  if (!BACKEND_URL || BACKEND_URL.indexOf('PEGA_AQUI') === 0) {
-    throw new Error('BACKEND_URL no configurada en el frontend');
-  }
-  const body = Object.assign({ action: action, token: session.token }, payload || {});
+  const body = Object.assign({
+    action: action,
+    token: session.token,
+    mis_proyectos: (session.proyectos || '')  // por si el central no la propaga
+  }, payload || {});
   const resp = await fetch(BACKEND_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -304,32 +566,31 @@ async function callBackend(action, payload) {
   return json;
 }
 
-// ═══ CARGA ════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ PANEL RH                                                                ═══
+// ═══════════════════════════════════════════════════════════════════════════════
 async function cargarEmpleados() {
-  const lista = document.getElementById('lista');
+  const lista = document.getElementById('lista-emp');
   lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando empleados…</div>';
-  document.getElementById('count-label').textContent = 'Cargando...';
-
+  document.getElementById('count-emp').textContent = 'Cargando...';
   try {
     const r = await callBackend('listarEmpleados', { incluir_inactivos: true });
     empleados = r.empleados || [];
-    renderLista();
+    renderListaEmp();
   } catch(err) {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
-    document.getElementById('count-label').textContent = '';
     toast(err.message, 'error');
   }
 }
 
-// ═══ RENDER ═══════════════════════════════════════════════════════════════════
-function renderLista() {
-  const lista  = document.getElementById('lista');
-  const search = (document.getElementById('search').value || '').trim().toUpperCase();
+function renderListaEmp() {
+  const lista  = document.getElementById('lista-emp');
+  const search = (document.getElementById('search-emp').value || '').trim().toUpperCase();
 
   let visibles = empleados.filter(e => {
     const activo = e.activo === 'SI' || e.activo === true;
-    if (filtro === 'activos'   && !activo) return false;
-    if (filtro === 'inactivos' &&  activo) return false;
+    if (filtroEmp === 'activos'   && !activo) return false;
+    if (filtroEmp === 'inactivos' &&  activo) return false;
     if (search) {
       const blob = ((e.nombre || '') + ' ' + (e.curp || '') + ' ' + (e.rfc || '')).toUpperCase();
       if (blob.indexOf(search) < 0) return false;
@@ -338,54 +599,45 @@ function renderLista() {
   });
 
   visibles.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
-
-  document.getElementById('count-label').textContent =
+  document.getElementById('count-emp').textContent =
     visibles.length + (visibles.length === 1 ? ' empleado' : ' empleados');
 
-  if (visibles.length === 0) {
-    lista.innerHTML = '<div class="empty">No hay empleados que coincidan.</div>';
-    return;
-  }
+  if (visibles.length === 0) { lista.innerHTML = '<div class="empty">No hay empleados que coincidan.</div>'; return; }
 
   lista.innerHTML = visibles.map(e => {
-    const activo  = e.activo === 'SI' || e.activo === true;
-    const tarifa  = parseFloat(e.tarifa_diaria || 0);
-    const tope    = parseFloat(e.tope_imss_quincenal || 0);
+    const activo = e.activo === 'SI' || e.activo === true;
+    const tarifa = parseFloat(e.tarifa_diaria || 0);
+    const tope   = parseFloat(e.tope_imss_quincenal || 0);
     const tipoTag = e.tipo === 'NO_IMSS'
       ? '<span class="emp-tag no-imss">No IMSS</span>'
       : '<span class="emp-tag imss">IMSS</span>';
     const inactivoTag = activo ? '' : '<span class="emp-tag inactivo">Inactivo</span>';
     const tarifaTag   = tarifa > 0 ? '' : '<span class="emp-tag sin-tarifa">Sin tarifa</span>';
-    const money       = tarifa > 0
+    const money = tarifa > 0
       ? '$' + tarifa.toFixed(2) + ' /día' + (tope > 0 ? ' · tope $' + tope.toFixed(2) : '')
       : 'Tarifa pendiente de capturar';
-
     return `
-      <div class="emp-card ${activo ? '' : 'inactivo'}" onclick="abrirDetalle(${e.id})">
+      <div class="emp-card ${activo ? '' : 'inactivo'}" onclick="abrirDetalleEmp(${e.id})">
         <div class="emp-name">${escapeHtml(e.nombre)}</div>
         <div class="emp-meta">${tipoTag}${inactivoTag}${tarifaTag}<span class="emp-tag">${escapeHtml(e.banco || '—')}</span></div>
         <div class="emp-money">${money}</div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
-function setFiltro(f) {
-  filtro = f;
-  document.querySelectorAll('.pill').forEach(p =>
+function setFiltroEmp(f) {
+  filtroEmp = f;
+  document.querySelectorAll('#panel-rh .pill').forEach(p =>
     p.classList.toggle('active', p.dataset.filter === f));
-  renderLista();
+  renderListaEmp();
 }
 
-// ═══ DETALLE ══════════════════════════════════════════════════════════════════
-function abrirDetalle(id) {
+function abrirDetalleEmp(id) {
   const e = empleados.find(x => String(x.id) === String(id));
   if (!e) return;
-
   const activo = e.activo === 'SI' || e.activo === true;
-  const body   = document.getElementById('detalle-body');
-  const acts   = document.getElementById('detalle-actions');
-
+  const body = document.getElementById('detalle-emp-body');
+  const acts = document.getElementById('detalle-emp-actions');
   body.innerHTML = `
     <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value">${e.id}</span></div>
     <div class="detail-row"><span class="detail-label">Nombre</span><span class="detail-value">${escapeHtml(e.nombre)}</span></div>
@@ -402,45 +654,34 @@ function abrirDetalle(id) {
     ${!activo ? `<div class="detail-row"><span class="detail-label">Fecha baja</span><span class="detail-value">${e.fecha_baja || '—'}</span></div>` : ''}
     <div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-value">${escapeHtml(e.observaciones || '—')}</span></div>
   `;
-
   acts.innerHTML = activo
-    ? `<button class="btn btn-secondary" onclick="cerrarDetalle()">Cerrar</button>
-       <button class="btn btn-danger" onclick="darBaja(${e.id})">Dar de baja</button>
-       <button class="btn" onclick="abrirEditar(${e.id})">Editar</button>`
-    : `<button class="btn btn-secondary" onclick="cerrarDetalle()">Cerrar</button>
-       <button class="btn btn-success" onclick="reactivar(${e.id})">Reactivar</button>
-       <button class="btn" onclick="abrirEditar(${e.id})">Editar</button>`;
-
-  document.getElementById('modal-detalle').classList.add('show');
+    ? `<button class="btn btn-secondary" onclick="cerrarDetalleEmp()">Cerrar</button>
+       <button class="btn btn-danger" onclick="darBajaEmp(${e.id})">Dar de baja</button>
+       <button class="btn" onclick="abrirEditarEmp(${e.id})">Editar</button>`
+    : `<button class="btn btn-secondary" onclick="cerrarDetalleEmp()">Cerrar</button>
+       <button class="btn btn-success" onclick="reactivarEmp(${e.id})">Reactivar</button>
+       <button class="btn" onclick="abrirEditarEmp(${e.id})">Editar</button>`;
+  document.getElementById('modal-detalle-emp').classList.add('show');
 }
+function cerrarDetalleEmp() { document.getElementById('modal-detalle-emp').classList.remove('show'); }
 
-function cerrarDetalle() { document.getElementById('modal-detalle').classList.remove('show'); }
-
-// ═══ FORMULARIO (crear / editar) ══════════════════════════════════════════════
-function abrirNuevo() {
-  editandoId = null;
-  document.getElementById('modal-form-title').textContent = 'Nuevo empleado';
-  document.getElementById('f-nombre').value = '';
-  document.getElementById('f-tipo').value   = 'IMSS';
-  document.getElementById('f-nss').value    = '';
-  document.getElementById('f-curp').value   = '';
-  document.getElementById('f-rfc').value    = '';
-  document.getElementById('f-banco').value  = '';
-  document.getElementById('f-cuenta').value = '';
-  document.getElementById('f-tarifa').value = '';
-  document.getElementById('f-tope').value   = '4410.56';
-  document.getElementById('f-obs').value    = '';
+function abrirNuevoEmp() {
+  editandoEmpId = null;
+  document.getElementById('modal-form-emp-title').textContent = 'Nuevo empleado';
+  ['f-nombre','f-nss','f-curp','f-rfc','f-banco','f-cuenta','f-tarifa','f-obs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-tipo').value = 'IMSS';
+  document.getElementById('f-tope').value = '4410.56';
   document.getElementById('f-activo-display').value = 'SI';
   onTipoChange();
-  document.getElementById('modal-form').classList.add('show');
+  document.getElementById('modal-form-emp').classList.add('show');
   setTimeout(() => document.getElementById('f-nombre').focus(), 150);
 }
 
-function abrirEditar(id) {
+function abrirEditarEmp(id) {
   const e = empleados.find(x => String(x.id) === String(id));
   if (!e) return;
-  editandoId = id;
-  document.getElementById('modal-form-title').textContent = 'Editar: ' + e.nombre;
+  editandoEmpId = id;
+  document.getElementById('modal-form-emp-title').textContent = 'Editar: ' + e.nombre;
   document.getElementById('f-nombre').value = e.nombre || '';
   document.getElementById('f-tipo').value   = e.tipo   || 'IMSS';
   document.getElementById('f-nss').value    = e.nss    || '';
@@ -453,35 +694,25 @@ function abrirEditar(id) {
   document.getElementById('f-obs').value    = e.observaciones || '';
   document.getElementById('f-activo-display').value = (e.activo === 'SI' || e.activo === true) ? 'SI' : 'NO';
   onTipoChange();
-  cerrarDetalle();
-  document.getElementById('modal-form').classList.add('show');
+  cerrarDetalleEmp();
+  document.getElementById('modal-form-emp').classList.add('show');
 }
 
-function cerrarForm() { document.getElementById('modal-form').classList.remove('show'); }
+function cerrarFormEmp() { document.getElementById('modal-form-emp').classList.remove('show'); }
 
 function onTipoChange() {
   const tipo = document.getElementById('f-tipo').value;
-  const blockImss = document.getElementById('f-block-imss');
-  const blockTope = document.getElementById('f-block-tope');
-  if (tipo === 'NO_IMSS') {
-    blockImss.style.opacity = '.4';
-    blockTope.style.opacity = '.4';
-    document.getElementById('f-tope').value = '0';
-  } else {
-    blockImss.style.opacity = '1';
-    blockTope.style.opacity = '1';
-    if (parseFloat(document.getElementById('f-tope').value || 0) === 0) {
-      document.getElementById('f-tope').value = '4410.56';
-    }
-  }
+  document.getElementById('f-block-imss').style.opacity = tipo === 'NO_IMSS' ? '.4' : '1';
+  document.getElementById('f-block-tope').style.opacity = tipo === 'NO_IMSS' ? '.4' : '1';
+  if (tipo === 'NO_IMSS') document.getElementById('f-tope').value = '0';
+  else if (parseFloat(document.getElementById('f-tope').value || 0) === 0) document.getElementById('f-tope').value = '4410.56';
 }
 
-async function guardar() {
+async function guardarEmp() {
   const nombre = document.getElementById('f-nombre').value.trim();
   if (!nombre) { toast('Falta nombre', 'error'); return; }
-
   const empleado = {
-    nombre: nombre,
+    nombre,
     tipo:   document.getElementById('f-tipo').value,
     nss:    document.getElementById('f-nss').value.trim(),
     curp:   document.getElementById('f-curp').value.trim().toUpperCase(),
@@ -492,51 +723,481 @@ async function guardar() {
     tope_imss_quincenal:  parseFloat(document.getElementById('f-tope').value   || 0),
     observaciones:        document.getElementById('f-obs').value.trim()
   };
-
-  const btn = document.getElementById('btn-guardar');
+  const btn = document.getElementById('btn-guardar-emp');
   btn.disabled = true; btn.textContent = 'Guardando…';
-
   try {
-    if (editandoId) {
-      await callBackend('actualizarEmpleado', { id: editandoId, empleado: empleado });
-      toast('Empleado actualizado', 'success');
-    } else {
-      await callBackend('crearEmpleado', { empleado: empleado });
-      toast('Empleado creado', 'success');
-    }
-    cerrarForm();
+    if (editandoEmpId) await callBackend('actualizarEmpleado', { id: editandoEmpId, empleado });
+    else               await callBackend('crearEmpleado', { empleado });
+    toast(editandoEmpId ? 'Empleado actualizado' : 'Empleado creado', 'success');
+    cerrarFormEmp();
     await cargarEmpleados();
-  } catch(err) {
-    toast(err.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Guardar';
-  }
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
 }
 
-// ═══ BAJA / REACTIVAR ═════════════════════════════════════════════════════════
-async function darBaja(id) {
+async function darBajaEmp(id) {
   const e = empleados.find(x => String(x.id) === String(id));
-  if (!e) return;
-  const ok = confirm('¿Dar de baja a ' + e.nombre + '?\n\nQuedará inactivo pero su histórico se conserva.');
-  if (!ok) return;
+  if (!e || !confirm('¿Dar de baja a ' + e.nombre + '?')) return;
   try {
-    await callBackend('bajaEmpleado', { id: id });
+    await callBackend('bajaEmpleado', { id });
     toast('Empleado dado de baja', 'success');
-    cerrarDetalle();
-    await cargarEmpleados();
+    cerrarDetalleEmp(); await cargarEmpleados();
   } catch(err) { toast(err.message, 'error'); }
 }
 
-async function reactivar(id) {
+async function reactivarEmp(id) {
   const e = empleados.find(x => String(x.id) === String(id));
-  if (!e) return;
-  const ok = confirm('¿Reactivar a ' + e.nombre + '?');
-  if (!ok) return;
+  if (!e || !confirm('¿Reactivar a ' + e.nombre + '?')) return;
   try {
-    await callBackend('reactivarEmpleado', { id: id });
+    await callBackend('reactivarEmpleado', { id });
     toast('Empleado reactivado', 'success');
-    cerrarDetalle();
-    await cargarEmpleados();
+    cerrarDetalleEmp(); await cargarEmpleados();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ PANEL SUPERVISOR — LISTA                                                ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function initSupervisor() {
+  document.getElementById('quin-vigente').textContent = '...';
+  document.getElementById('quin-fechas').textContent = 'Cargando...';
+  try {
+    // 1. Cargar quincena vigente
+    const q = await callBackend('quincenaActual');
+    quincenaVigente = q.quincena;
+    document.getElementById('quin-vigente').textContent = quincenaVigente.id;
+    document.getElementById('quin-fechas').textContent =
+      `Del ${quincenaVigente.fecha_inicio} al ${quincenaVigente.fecha_fin} · Pago: ${quincenaVigente.fecha_pago}`;
+
+    // 2. Cargar mis proyectos asignados (filtrados por catálogo activo)
+    const p = await callBackend('misProyectos');
+    proyectosAsignados = p.proyectos || [];
+    if (p.asignados && p.asignados.length > 0 && proyectosAsignados.length === 0) {
+      toast('Tus obras asignadas no están en el catálogo activo', 'error');
+    }
+
+    // 3. Cargar mis capturas
+    await cargarCapturas();
+
+    // Cargar empleados (los necesitamos para agregar a captura)
+    if (empleados.length === 0) {
+      try {
+        const r = await callBackend('listarEmpleados', { incluir_inactivos: false });
+        empleados = r.empleados || [];
+      } catch(e) { /* ignore, RH-only error si no tiene permiso */ }
+    }
+  } catch(err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function cargarCapturas() {
+  if (!quincenaVigente) return;
+  try {
+    const r = await callBackend('misCapturas', { quincena_id: quincenaVigente.id });
+    capturas = r.capturas || [];
+    renderCapturas();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+function renderCapturas() {
+  const lista = document.getElementById('lista-cap');
+  document.getElementById('count-cap').textContent =
+    capturas.length + (capturas.length === 1 ? ' captura' : ' capturas');
+
+  if (capturas.length === 0) {
+    lista.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-title">No tienes capturas en esta quincena</div>
+        <div class="empty-state-msg">Click en "+ Nueva" para crear una.</div>
+      </div>`;
+    return;
+  }
+  lista.innerHTML = capturas.map(c => `
+    <div class="cap-card" onclick="abrirCaptura(${c.id})">
+      <div class="cap-head">
+        <div>
+          <div class="cap-proj">${escapeHtml(c.proyecto)}</div>
+          <div class="cap-quin">Quincena ${c.quincena_id}</div>
+        </div>
+        <span class="cap-status ${c.estado}">${c.estado}</span>
+      </div>
+      <div class="cap-meta">${c.num_empleados || 0} empleado${c.num_empleados === 1 ? '' : 's'}${c.comentario_rechazo ? ' · ⚠️ ' + escapeHtml(c.comentario_rechazo) : ''}</div>
+    </div>
+  `).join('');
+}
+
+function abrirNuevaCap() {
+  if (proyectosAsignados.length === 0) {
+    toast('No tienes obras asignadas en el catálogo activo', 'error');
+    return;
+  }
+  // Filtrar las que ya tienen captura en la quincena
+  const yaConCaptura = capturas.map(c => c.proyecto);
+  const disponibles  = proyectosAsignados.filter(p => yaConCaptura.indexOf(p) < 0);
+  if (disponibles.length === 0) {
+    toast('Ya tienes captura en todas tus obras de esta quincena', 'error');
+    return;
+  }
+  document.getElementById('nc-quincena').value = quincenaVigente.id;
+  const sel = document.getElementById('nc-proyecto');
+  sel.innerHTML = disponibles.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  document.getElementById('modal-nueva-cap').classList.add('show');
+}
+function cerrarNuevaCap() { document.getElementById('modal-nueva-cap').classList.remove('show'); }
+
+async function crearCaptura() {
+  const proyecto = document.getElementById('nc-proyecto').value;
+  const btn = document.getElementById('btn-crear-cap');
+  btn.disabled = true; btn.textContent = 'Creando…';
+  try {
+    const r = await callBackend('crearCaptura', { proyecto, quincena_id: quincenaVigente.id });
+    cerrarNuevaCap();
+    toast('Captura creada', 'success');
+    await cargarCapturas();
+    abrirCaptura(r.captura_id);
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Crear'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ PANEL SUPERVISOR — DETALLE DE CAPTURA                                   ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function abrirCaptura(id) {
+  capturaActual = id;
+  cambiarVista('cap-detail');
+}
+
+async function cargarCaptura(id) {
+  const cont = document.getElementById('lista-emp-cap');
+  cont.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try {
+    const r = await callBackend('obtenerCaptura', { captura_id: id });
+    datosCaptura = r;
+    renderCapturaDetalle();
+  } catch(err) {
+    cont.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderCapturaDetalle() {
+  const c = datosCaptura.captura;
+  const q = datosCaptura.quincena;
+  document.getElementById('topbar-subtitle').textContent = 'Nómina · ' + c.proyecto;
+
+  // Header
+  const hdr = document.getElementById('cap-detail-header');
+  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  hdr.innerHTML = `
+    <div class="cap-toolbar-row">
+      <div>
+        <div class="cap-proj">${escapeHtml(c.proyecto)}</div>
+        <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
+      </div>
+      <span class="cap-status ${c.estado}">${c.estado}</span>
+    </div>
+    ${c.comentario_rechazo ? `<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">⚠️ ${escapeHtml(c.comentario_rechazo)}</div></div>` : ''}
+  `;
+
+  // Lista de empleados
+  const cont = document.getElementById('lista-emp-cap');
+  if (datosCaptura.empleados.length === 0) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">👷</div>
+        <div class="empty-state-title">Sin empleados todavía</div>
+        <div class="empty-state-msg">Click en "+ Agregar" para registrar un empleado en esta obra.</div>
+      </div>`;
+  } else {
+    cont.innerHTML = datosCaptura.empleados.map(emp => renderEmpleadoCap(emp, editable)).join('');
+  }
+  document.getElementById('count-emp-cap').textContent = datosCaptura.empleados.length + ' empleado' + (datosCaptura.empleados.length === 1 ? '' : 's');
+
+  // FAB
+  const fab = document.getElementById('fab-bar-cap');
+  if (c.estado === 'BORRADOR' || c.estado === 'RECHAZADA') {
+    fab.innerHTML = `<button class="btn btn-block" onclick="enviarCaptura()">Enviar para aprobación</button>`;
+  } else if (c.estado === 'ENVIADA') {
+    fab.innerHTML = `<button class="btn btn-secondary btn-block" onclick="volverBorrador()">Volver a borrador para editar</button>`;
+  } else {
+    fab.innerHTML = '';
+  }
+}
+
+function renderEmpleadoCap(emp, editable) {
+  const dias = datosCaptura.dias.filter(d => String(d.empleado_id) === String(emp.id));
+  const extras = datosCaptura.extras.filter(e => String(e.empleado_id) === String(emp.id));
+  const viaticos = datosCaptura.viaticos.filter(v => String(v.empleado_id) === String(emp.id));
+
+  const tarifa = parseFloat(emp.tarifa_diaria || 0);
+
+  // Calendario 14 días
+  let cal = '';
+  for (let i = 0; i < 14; i++) {
+    const d = dias.find(x => parseInt(x.dia_offset,10) === i);
+    const marca = d ? String(d.marca || '').toUpperCase() : '';
+    const fecha = fechaDeOffset(i);
+    const onclickAttr = editable ? `onclick="abrirMenuDia(${emp.id}, ${i})"` : '';
+    cal += `<button class="dia-btn ${marca}" ${onclickAttr}><span class="dia-num">${fecha}</span><span class="dia-mark">${marca || '·'}</span></button>`;
+  }
+
+  // Totales
+  const diasT = dias.filter(d => String(d.marca).toUpperCase() === 'T').length;
+  const totalDias = diasT * tarifa;
+  const totalExtras = extras.reduce((s, e) => s + parseFloat(e.monto || 0), 0);
+  const totalViaticos = viaticos.reduce((s, v) => s + parseFloat(v.monto || 0), 0);
+  const total = totalDias + totalExtras + totalViaticos;
+
+  // Extras list
+  const extrasList = extras.map(e => `
+    <div class="subsec-item">
+      <div class="subsec-item-info">${parseFloat(e.horas||0)}h${e.descripcion ? ' · ' + escapeHtml(e.descripcion) : ''}</div>
+      <span class="subsec-item-monto">$${parseFloat(e.monto||0).toFixed(2)}</span>
+      ${editable ? `<div class="subsec-item-actions">
+        <button onclick="abrirEditarExtra(${emp.id}, ${e.id})" title="Editar">✎</button>
+        <button onclick="eliminarExtra(${e.id})" title="Eliminar">×</button>
+      </div>` : ''}
+    </div>
+  `).join('');
+
+  // Viaticos list
+  const viaticosList = viaticos.map(v => `
+    <div class="subsec-item">
+      <div class="subsec-item-info">${escapeHtml(v.concepto || '—')}</div>
+      <span class="subsec-item-monto">$${parseFloat(v.monto||0).toFixed(2)}</span>
+      ${editable ? `<div class="subsec-item-actions">
+        <button onclick="abrirEditarViatico(${emp.id}, ${v.id})" title="Editar">✎</button>
+        <button onclick="eliminarViatico(${v.id})" title="Eliminar">×</button>
+      </div>` : ''}
+    </div>
+  `).join('');
+
+  return `
+    <div class="empleado-cap" data-emp="${emp.id}">
+      <div class="empleado-cap-head">
+        <div class="empleado-cap-name">${escapeHtml(emp.nombre)}<div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px">$${tarifa.toFixed(2)}/día</div></div>
+        ${editable ? `<button class="empleado-cap-quitar" onclick="quitarEmpleadoCap(${emp.id})" title="Quitar">×</button>` : ''}
+      </div>
+      <div class="calendario">${cal}</div>
+      <div class="subsec">
+        <div class="subsec-title"><span>Horas extras${extras.length ? ' (' + extras.length + ')' : ''}</span>${editable ? `<button class="subsec-add" onclick="abrirNuevoExtra(${emp.id})">+ Agregar</button>` : ''}</div>
+        ${extrasList}
+      </div>
+      <div class="subsec">
+        <div class="subsec-title"><span>Viáticos${viaticos.length ? ' (' + viaticos.length + ')' : ''}</span>${editable ? `<button class="subsec-add" onclick="abrirNuevoViatico(${emp.id})">+ Agregar</button>` : ''}</div>
+        ${viaticosList}
+      </div>
+      <div class="empleado-cap-total">
+        <span class="empleado-cap-total-label">Total empleado</span>
+        <span class="empleado-cap-total-value">$${total.toFixed(2)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function fechaDeOffset(i) {
+  if (!datosCaptura?.quincena?.fecha_inicio) return String(i+1);
+  const partes = String(datosCaptura.quincena.fecha_inicio).split('-');
+  const d = new Date(+partes[0], +partes[1]-1, +partes[2]);
+  d.setDate(d.getDate() + i);
+  return (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + (d.getMonth()+1 < 10 ? '0' : '') + (d.getMonth()+1);
+}
+
+// ─── Agregar empleado a captura ───────────────────────────────────────────────
+function abrirAgregarEmp() {
+  document.getElementById('add-emp-search').value = '';
+  filtrarAddEmp();
+  document.getElementById('modal-add-emp').classList.add('show');
+}
+function cerrarAgregarEmp() { document.getElementById('modal-add-emp').classList.remove('show'); }
+
+function filtrarAddEmp() {
+  const search = (document.getElementById('add-emp-search').value || '').trim().toUpperCase();
+  const yaEn = (datosCaptura?.empleados || []).map(e => String(e.id));
+  const visibles = empleados
+    .filter(e => (e.activo === 'SI' || e.activo === true))
+    .filter(e => yaEn.indexOf(String(e.id)) < 0)
+    .filter(e => !search || (e.nombre || '').toUpperCase().indexOf(search) >= 0)
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+
+  const cont = document.getElementById('add-emp-lista');
+  if (visibles.length === 0) { cont.innerHTML = '<div class="empty">Sin resultados.</div>'; return; }
+  cont.innerHTML = visibles.map(e => `
+    <div class="emp-card" onclick="agregarEmpleadoACaptura(${e.id})">
+      <div class="emp-name">${escapeHtml(e.nombre)}</div>
+      <div class="emp-meta">
+        <span class="emp-tag ${e.tipo === 'NO_IMSS' ? 'no-imss' : 'imss'}">${e.tipo === 'NO_IMSS' ? 'No IMSS' : 'IMSS'}</span>
+        ${parseFloat(e.tarifa_diaria||0) > 0 ? '' : '<span class="emp-tag sin-tarifa">Sin tarifa</span>'}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function agregarEmpleadoACaptura(empleadoId) {
+  try {
+    await callBackend('agregarEmpleadoCap', { captura_id: capturaActual, empleado_id: empleadoId });
+    cerrarAgregarEmp();
+    toast('Empleado agregado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+async function quitarEmpleadoCap(empleadoId) {
+  const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
+  if (!emp || !confirm('¿Quitar a ' + emp.nombre + ' de esta captura? Se borran sus días, extras y viáticos.')) return;
+  try {
+    await callBackend('quitarEmpleadoCap', { captura_id: capturaActual, empleado_id: empleadoId });
+    toast('Empleado quitado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ─── Marcar día (menú modal) ──────────────────────────────────────────────────
+function abrirMenuDia(empleadoId, diaOffset) {
+  dayMenuCtx = { empleado_id: empleadoId, dia_offset: diaOffset };
+  const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
+  document.getElementById('modal-day-title').textContent =
+    (emp ? emp.nombre.split(' ').slice(0,2).join(' ') : 'Día') + ' · ' + fechaDeOffset(diaOffset);
+  document.getElementById('modal-day').classList.add('show');
+}
+function cerrarMenuDia() { document.getElementById('modal-day').classList.remove('show'); dayMenuCtx = null; }
+
+async function setMarcaDia(marca) {
+  if (!dayMenuCtx) return;
+  const ctx = dayMenuCtx;
+  cerrarMenuDia();
+  try {
+    await callBackend('marcarDia', {
+      captura_id: capturaActual,
+      empleado_id: ctx.empleado_id,
+      dia_offset: ctx.dia_offset,
+      marca: marca
+    });
+    await cargarCaptura(capturaActual);
+  } catch(err) {
+    if (err.message === 'CONFLICTO') {
+      // El backend puso la información en error pero fetch nos quita los detalles. Re-llamamos para obtenerlos.
+      toast('Conflicto: este empleado ya tiene día marcado en otra obra', 'error');
+    } else if (err.message.indexOf('CONFLICTO') === 0) {
+      toast(err.message, 'error');
+    } else {
+      toast(err.message, 'error');
+    }
+  }
+}
+
+// ─── Extras ───────────────────────────────────────────────────────────────────
+function abrirNuevoExtra(empleadoId) {
+  extraCtx = { empleado_id: empleadoId, extra_id: null };
+  document.getElementById('ex-horas').value = '';
+  document.getElementById('ex-monto').value = '';
+  document.getElementById('ex-desc').value  = '';
+  document.getElementById('modal-extra').classList.add('show');
+  setTimeout(() => document.getElementById('ex-horas').focus(), 150);
+}
+function abrirEditarExtra(empleadoId, extraId) {
+  const e = datosCaptura.extras.find(x => String(x.id) === String(extraId));
+  if (!e) return;
+  extraCtx = { empleado_id: empleadoId, extra_id: extraId };
+  document.getElementById('ex-horas').value = e.horas || '';
+  document.getElementById('ex-monto').value = e.monto || '';
+  document.getElementById('ex-desc').value  = e.descripcion || '';
+  document.getElementById('modal-extra').classList.add('show');
+}
+function cerrarExtra() { document.getElementById('modal-extra').classList.remove('show'); extraCtx = null; }
+
+async function guardarExtra() {
+  if (!extraCtx) return;
+  const horas = parseFloat(document.getElementById('ex-horas').value || 0);
+  const monto = parseFloat(document.getElementById('ex-monto').value || 0);
+  if (horas <= 0 || monto < 0) { toast('Horas y monto deben ser válidos', 'error'); return; }
+  try {
+    await callBackend('guardarExtra', {
+      captura_id: capturaActual,
+      empleado_id: extraCtx.empleado_id,
+      extra_id: extraCtx.extra_id,
+      horas, monto,
+      descripcion: document.getElementById('ex-desc').value.trim()
+    });
+    cerrarExtra();
+    toast('Extra guardado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+async function eliminarExtra(extraId) {
+  if (!confirm('¿Eliminar este registro de horas extras?')) return;
+  try {
+    await callBackend('eliminarExtra', { captura_id: capturaActual, extra_id: extraId });
+    toast('Extra eliminado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ─── Viáticos ─────────────────────────────────────────────────────────────────
+function abrirNuevoViatico(empleadoId) {
+  viaticoCtx = { empleado_id: empleadoId, viatico_id: null };
+  document.getElementById('via-concepto').value = '';
+  document.getElementById('via-monto').value = '';
+  document.getElementById('modal-via').classList.add('show');
+  setTimeout(() => document.getElementById('via-concepto').focus(), 150);
+}
+function abrirEditarViatico(empleadoId, viaticoId) {
+  const v = datosCaptura.viaticos.find(x => String(x.id) === String(viaticoId));
+  if (!v) return;
+  viaticoCtx = { empleado_id: empleadoId, viatico_id: viaticoId };
+  document.getElementById('via-concepto').value = v.concepto || '';
+  document.getElementById('via-monto').value = v.monto || '';
+  document.getElementById('modal-via').classList.add('show');
+}
+function cerrarViatico() { document.getElementById('modal-via').classList.remove('show'); viaticoCtx = null; }
+
+async function guardarViatico() {
+  if (!viaticoCtx) return;
+  const concepto = document.getElementById('via-concepto').value.trim();
+  const monto = parseFloat(document.getElementById('via-monto').value || 0);
+  if (!concepto || monto <= 0) { toast('Falta concepto o monto', 'error'); return; }
+  try {
+    await callBackend('guardarViatico', {
+      captura_id: capturaActual,
+      empleado_id: viaticoCtx.empleado_id,
+      viatico_id: viaticoCtx.viatico_id,
+      concepto, monto
+    });
+    cerrarViatico();
+    toast('Viático guardado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+async function eliminarViatico(viaticoId) {
+  if (!confirm('¿Eliminar este viático?')) return;
+  try {
+    await callBackend('eliminarViatico', { captura_id: capturaActual, viatico_id: viaticoId });
+    toast('Viático eliminado', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ─── Enviar / volver a borrador ───────────────────────────────────────────────
+async function enviarCaptura() {
+  if (!confirm('¿Enviar esta captura para aprobación? Aún podrás editarla mientras la quincena no se cierre.')) return;
+  try {
+    await callBackend('enviarCaptura', { captura_id: capturaActual });
+    toast('Captura enviada', 'success');
+    await cargarCaptura(capturaActual);
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+async function volverBorrador() {
+  try {
+    await callBackend('volverBorrador', { captura_id: capturaActual });
+    toast('Captura en borrador', 'success');
+    await cargarCaptura(capturaActual);
   } catch(err) { toast(err.message, 'error'); }
 }
 
@@ -553,7 +1214,7 @@ function toast(msg, kind) {
   t.textContent = msg;
   t.className = 'toast show ' + (kind || '');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.classList.remove('show'); }, 2800);
+  toast._t = setTimeout(() => { t.classList.remove('show'); }, 3500);
 }
 </script>
 </body>
