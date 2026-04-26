@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>CAMI — Nómina</title>
+<link rel="manifest" href="manifest.json"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+<meta name="apple-mobile-web-app-title" content="CAMI Nómina"/>
+<meta name="theme-color" content="#1A1A18"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#F5F3EE;--card:#fff;--border:#D3D1C7;--text:#1A1A18;--muted:#888780;--dark:#1A1A18;--light:#EFEFED;--err-bg:#FCEBEB;--err:#A32D2D;--ok-bg:#EAF3DE;--ok:#3B6D11;}
+body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;}
+
+/* ── TOPBAR ── */
+.topbar{background:#1A1A18;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.topbar .logo-text{font-size:20px;letter-spacing:.18em;color:#fff;font-weight:900;}
+.topbar .module-name{font-size:11px;color:#888780;letter-spacing:.12em;text-transform:uppercase;}
+.topbar-right{text-align:right;}
+.topbar-user{font-size:10px;color:#888780;letter-spacing:.06em;text-transform:uppercase;}
+.topbar-role{font-size:12px;font-weight:700;color:#fff;margin-top:2px;}
+.back-btn{background:none;border:0.5px solid #444;border-radius:6px;color:#fff;padding:6px 10px;font-family:inherit;font-size:11px;letter-spacing:.06em;cursor:pointer;}
+.back-btn:active{background:#333;}
+
+/* ── TABS (placeholder, fase 1 solo RH) ── */
+.tabs{background:#fff;border-bottom:0.5px solid var(--border);display:flex;overflow-x:auto;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{flex-shrink:0;padding:14px 18px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;background:none;font-family:inherit;}
+.tab.active{color:var(--text);border-bottom-color:var(--dark);font-weight:700;}
+.tab.disabled{color:#c5c3bb;cursor:not-allowed;}
+
+/* ── CONTAINER ── */
+.container{padding:16px;max-width:760px;margin:0 auto;}
+
+/* ── FILTER BAR ── */
+.filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.filter-row{display:flex;gap:8px;align-items:center;}
+.search-box{flex:1;background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px 14px;font-family:inherit;font-size:13px;color:var(--text);outline:none;}
+.search-box:focus{border-color:var(--dark);}
+.btn{background:var(--dark);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-family:inherit;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;cursor:pointer;white-space:nowrap;}
+.btn:active{transform:scale(.97);}
+.btn-secondary{background:#fff;color:var(--text);border:0.5px solid var(--border);}
+.btn-secondary:active{background:var(--light);}
+.btn-danger{background:var(--err);color:#fff;}
+.btn-success{background:var(--ok);color:#fff;}
+.btn-sm{padding:8px 12px;font-size:11px;}
+.filter-pills{display:flex;gap:6px;}
+.pill{background:var(--card);border:0.5px solid var(--border);border-radius:20px;padding:6px 14px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;color:var(--muted);font-family:inherit;}
+.pill.active{background:var(--dark);color:#fff;border-color:var(--dark);}
+
+/* ── EMPLOYEE LIST ── */
+.section-header{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin:18px 0 10px;display:flex;justify-content:space-between;align-items:center;}
+.emp-list{display:flex;flex-direction:column;gap:8px;}
+.emp-card{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .1s;}
+.emp-card:active{background:var(--light);}
+.emp-card.inactivo{opacity:.55;}
+.emp-name{font-size:13px;font-weight:700;letter-spacing:.02em;line-height:1.3;}
+.emp-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:10px;color:var(--muted);}
+.emp-tag{background:var(--light);padding:2px 8px;border-radius:10px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;}
+.emp-tag.imss{background:#E6F1FB;color:#0C447C;}
+.emp-tag.no-imss{background:#FAEEDA;color:#854F0B;}
+.emp-tag.inactivo{background:var(--err-bg);color:var(--err);}
+.emp-tag.sin-tarifa{background:var(--err-bg);color:var(--err);}
+.emp-money{font-size:11px;color:var(--muted);margin-top:6px;}
+
+/* ── EMPTY / LOADING ── */
+.empty,.loading{padding:40px 20px;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.04em;}
+.spinner{width:22px;height:22px;border:2px solid var(--light);border-top-color:var(--dark);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(26,26,24,.6);display:none;align-items:flex-end;justify-content:center;z-index:50;}
+.modal-bg.show{display:flex;}
+.modal{background:var(--bg);width:100%;max-width:560px;max-height:92vh;border-radius:14px 14px 0 0;display:flex;flex-direction:column;animation:slideUp .2s ease-out;}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal-header{padding:16px 18px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:14px 14px 0 0;}
+.modal-title{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px;}
+.modal-body{padding:18px;overflow-y:auto;flex:1;}
+.modal-actions{padding:14px 18px;border-top:0.5px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:var(--card);}
+
+.field{margin-bottom:14px;}
+.field-label{display:block;font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;}
+.field-input,.field-select{width:100%;background:var(--card);border:0.5px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);outline:none;}
+.field-input:focus,.field-select:focus{border-color:var(--dark);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.field-help{font-size:10px;color:var(--muted);margin-top:4px;}
+
+.detail-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:0.5px dashed var(--border);font-size:12px;}
+.detail-row:last-child{border-bottom:none;}
+.detail-label{color:var(--muted);letter-spacing:.04em;}
+.detail-value{font-weight:700;text-align:right;}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--dark);color:#fff;padding:12px 20px;border-radius:8px;font-size:12px;letter-spacing:.04em;z-index:100;opacity:0;transition:opacity .2s;pointer-events:none;}
+.toast.show{opacity:1;}
+.toast.error{background:var(--err);}
+.toast.success{background:var(--ok);}
+
+/* ── ACCESS DENIED ── */
+.no-access{padding:60px 24px;text-align:center;}
+.no-access-icon{font-size:32px;margin-bottom:14px;}
+.no-access-title{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;}
+.no-access-msg{font-size:12px;color:var(--muted);line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <button class="back-btn" onclick="volverHub()">←</button>
+    <div>
+      <div class="logo-text">CAMI</div>
+      <div class="module-name">Nómina · Catálogo</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="topbar-user" id="topbar-user">—</div>
+    <div class="topbar-role" id="topbar-role">—</div>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-tab="rh">Catálogo RH</button>
+</div>
+
+<!-- Sin acceso -->
+<div id="no-access" class="no-access" style="display:none">
+  <div class="no-access-icon">🔒</div>
+  <div class="no-access-title">Sin acceso</div>
+  <div class="no-access-msg">Tu cuenta no tiene permisos para este módulo.<br>Contacta al administrador.</div>
+</div>
+
+<!-- Panel RH -->
+<div id="panel-rh" class="container" style="display:none">
+
+  <div class="filter-bar">
+    <div class="filter-row">
+      <input type="text" class="search-box" id="search" placeholder="Buscar por nombre, CURP, RFC..." oninput="renderLista()"/>
+      <button class="btn" onclick="abrirNuevo()">+ Nuevo</button>
+    </div>
+    <div class="filter-pills">
+      <button class="pill active" data-filter="activos" onclick="setFiltro('activos')">Activos</button>
+      <button class="pill" data-filter="inactivos" onclick="setFiltro('inactivos')">Inactivos</button>
+      <button class="pill" data-filter="todos" onclick="setFiltro('todos')">Todos</button>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span id="count-label">Cargando...</span>
+    <button class="btn btn-secondary btn-sm" onclick="cargarEmpleados()">↻ Recargar</button>
+  </div>
+
+  <div id="lista" class="emp-list"></div>
+
+</div>
+
+<!-- Modal: Crear / Editar -->
+<div class="modal-bg" id="modal-form">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-form-title">Nuevo empleado</div>
+      <button class="modal-close" onclick="cerrarForm()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Nombre completo *</label>
+        <input class="field-input" id="f-nombre" autocomplete="off" placeholder="APELLIDO PATERNO MATERNO NOMBRE(S)"/>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Tipo *</label>
+          <select class="field-select" id="f-tipo" onchange="onTipoChange()">
+            <option value="IMSS">IMSS (con tope fiscal)</option>
+            <option value="NO_IMSS">NO IMSS (todo directo)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Activo</label>
+          <input class="field-input" id="f-activo-display" value="SI" disabled/>
+        </div>
+      </div>
+      <div class="field-row" id="f-block-imss">
+        <div class="field">
+          <label class="field-label">NSS</label>
+          <input class="field-input" id="f-nss" autocomplete="off"/>
+        </div>
+        <div class="field">
+          <label class="field-label">CURP</label>
+          <input class="field-input" id="f-curp" autocomplete="off" style="text-transform:uppercase"/>
+        </div>
+      </div>
+      <div class="field" id="f-block-rfc">
+        <label class="field-label">RFC</label>
+        <input class="field-input" id="f-rfc" autocomplete="off" style="text-transform:uppercase"/>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Banco</label>
+          <input class="field-input" id="f-banco" autocomplete="off" style="text-transform:uppercase"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Cuenta o CLABE</label>
+          <input class="field-input" id="f-cuenta" autocomplete="off"/>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Tarifa diaria *</label>
+          <input class="field-input" id="f-tarifa" type="number" step="0.01" min="0" placeholder="0.00"/>
+          <div class="field-help">Lo que paga CAMI por día trabajado</div>
+        </div>
+        <div class="field" id="f-block-tope">
+          <label class="field-label">Tope IMSS quincenal</label>
+          <input class="field-input" id="f-tope" type="number" step="0.01" min="0" value="4410.56"/>
+          <div class="field-help">Default $4,410.56</div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Observaciones</label>
+        <input class="field-input" id="f-obs" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarForm()">Cancelar</button>
+      <button class="btn" id="btn-guardar" onclick="guardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Detalle -->
+<div class="modal-bg" id="modal-detalle">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Detalle del empleado</div>
+      <button class="modal-close" onclick="cerrarDetalle()">×</button>
+    </div>
+    <div class="modal-body" id="detalle-body"></div>
+    <div class="modal-actions" id="detalle-actions"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══ CONFIG ═══════════════════════════════════════════════════════════════════
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzseOJqiT5sIlFNYSXQ4zr3xX7jHdiTUA6VJZFjpgECA6Al-RFH0Wl0p7_h5RolteK5/exec';
+const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
+
+// ═══ ESTADO ═══════════════════════════════════════════════════════════════════
+let session     = null;
+let empleados   = [];
+let filtro      = 'activos';
+let editandoId  = null;
+
+// ═══ INIT ═════════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', init);
+
+function init() {
+  const raw = sessionStorage.getItem('cami_session');
+  if (!raw) { window.location.href = HUB_URL; return; }
+  try {
+    session = JSON.parse(raw);
+  } catch(e) {
+    sessionStorage.removeItem('cami_session');
+    window.location.href = HUB_URL;
+    return;
+  }
+
+  document.getElementById('topbar-user').textContent = session.nombre || '—';
+  document.getElementById('topbar-role').textContent = session.rol    || '—';
+
+  const apps = session.apps || [];
+  const tieneRH = apps.indexOf('nomina-rh') >= 0;
+
+  if (!tieneRH) {
+    document.getElementById('no-access').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('panel-rh').style.display = 'block';
+  cargarEmpleados();
+}
+
+function volverHub() { window.location.href = HUB_URL; }
+
+// ═══ API ══════════════════════════════════════════════════════════════════════
+async function callBackend(action, payload) {
+  if (!BACKEND_URL || BACKEND_URL.indexOf('PEGA_AQUI') === 0) {
+    throw new Error('BACKEND_URL no configurada en el frontend');
+  }
+  const body = Object.assign({ action: action, token: session.token }, payload || {});
+  const resp = await fetch(BACKEND_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+    redirect: 'follow'
+  });
+  const json = await resp.json();
+  if (!json.ok) throw new Error(json.error || 'error desconocido');
+  return json;
+}
+
+// ═══ CARGA ════════════════════════════════════════════════════════════════════
+async function cargarEmpleados() {
+  const lista = document.getElementById('lista');
+  lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando empleados…</div>';
+  document.getElementById('count-label').textContent = 'Cargando...';
+
+  try {
+    const r = await callBackend('listarEmpleados', { incluir_inactivos: true });
+    empleados = r.empleados || [];
+    renderLista();
+  } catch(err) {
+    lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    document.getElementById('count-label').textContent = '';
+    toast(err.message, 'error');
+  }
+}
+
+// ═══ RENDER ═══════════════════════════════════════════════════════════════════
+function renderLista() {
+  const lista  = document.getElementById('lista');
+  const search = (document.getElementById('search').value || '').trim().toUpperCase();
+
+  let visibles = empleados.filter(e => {
+    const activo = e.activo === 'SI' || e.activo === true;
+    if (filtro === 'activos'   && !activo) return false;
+    if (filtro === 'inactivos' &&  activo) return false;
+    if (search) {
+      const blob = ((e.nombre || '') + ' ' + (e.curp || '') + ' ' + (e.rfc || '')).toUpperCase();
+      if (blob.indexOf(search) < 0) return false;
+    }
+    return true;
+  });
+
+  visibles.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+
+  document.getElementById('count-label').textContent =
+    visibles.length + (visibles.length === 1 ? ' empleado' : ' empleados');
+
+  if (visibles.length === 0) {
+    lista.innerHTML = '<div class="empty">No hay empleados que coincidan.</div>';
+    return;
+  }
+
+  lista.innerHTML = visibles.map(e => {
+    const activo  = e.activo === 'SI' || e.activo === true;
+    const tarifa  = parseFloat(e.tarifa_diaria || 0);
+    const tope    = parseFloat(e.tope_imss_quincenal || 0);
+    const tipoTag = e.tipo === 'NO_IMSS'
+      ? '<span class="emp-tag no-imss">No IMSS</span>'
+      : '<span class="emp-tag imss">IMSS</span>';
+    const inactivoTag = activo ? '' : '<span class="emp-tag inactivo">Inactivo</span>';
+    const tarifaTag   = tarifa > 0 ? '' : '<span class="emp-tag sin-tarifa">Sin tarifa</span>';
+    const money       = tarifa > 0
+      ? '$' + tarifa.toFixed(2) + ' /día' + (tope > 0 ? ' · tope $' + tope.toFixed(2) : '')
+      : 'Tarifa pendiente de capturar';
+
+    return `
+      <div class="emp-card ${activo ? '' : 'inactivo'}" onclick="abrirDetalle(${e.id})">
+        <div class="emp-name">${escapeHtml(e.nombre)}</div>
+        <div class="emp-meta">${tipoTag}${inactivoTag}${tarifaTag}<span class="emp-tag">${escapeHtml(e.banco || '—')}</span></div>
+        <div class="emp-money">${money}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function setFiltro(f) {
+  filtro = f;
+  document.querySelectorAll('.pill').forEach(p =>
+    p.classList.toggle('active', p.dataset.filter === f));
+  renderLista();
+}
+
+// ═══ DETALLE ══════════════════════════════════════════════════════════════════
+function abrirDetalle(id) {
+  const e = empleados.find(x => String(x.id) === String(id));
+  if (!e) return;
+
+  const activo = e.activo === 'SI' || e.activo === true;
+  const body   = document.getElementById('detalle-body');
+  const acts   = document.getElementById('detalle-actions');
+
+  body.innerHTML = `
+    <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value">${e.id}</span></div>
+    <div class="detail-row"><span class="detail-label">Nombre</span><span class="detail-value">${escapeHtml(e.nombre)}</span></div>
+    <div class="detail-row"><span class="detail-label">Tipo</span><span class="detail-value">${e.tipo}</span></div>
+    <div class="detail-row"><span class="detail-label">NSS</span><span class="detail-value">${escapeHtml(e.nss || '—')}</span></div>
+    <div class="detail-row"><span class="detail-label">CURP</span><span class="detail-value">${escapeHtml(e.curp || '—')}</span></div>
+    <div class="detail-row"><span class="detail-label">RFC</span><span class="detail-value">${escapeHtml(e.rfc || '—')}</span></div>
+    <div class="detail-row"><span class="detail-label">Banco</span><span class="detail-value">${escapeHtml(e.banco || '—')}</span></div>
+    <div class="detail-row"><span class="detail-label">Cuenta</span><span class="detail-value">${escapeHtml(e.cuenta || '—')}</span></div>
+    <div class="detail-row"><span class="detail-label">Tarifa diaria</span><span class="detail-value">$${parseFloat(e.tarifa_diaria || 0).toFixed(2)}</span></div>
+    <div class="detail-row"><span class="detail-label">Tope IMSS</span><span class="detail-value">$${parseFloat(e.tope_imss_quincenal || 0).toFixed(2)}</span></div>
+    <div class="detail-row"><span class="detail-label">Estado</span><span class="detail-value">${activo ? 'Activo' : 'Inactivo'}</span></div>
+    <div class="detail-row"><span class="detail-label">Fecha alta</span><span class="detail-value">${e.fecha_alta || '—'}</span></div>
+    ${!activo ? `<div class="detail-row"><span class="detail-label">Fecha baja</span><span class="detail-value">${e.fecha_baja || '—'}</span></div>` : ''}
+    <div class="detail-row"><span class="detail-label">Observaciones</span><span class="detail-value">${escapeHtml(e.observaciones || '—')}</span></div>
+  `;
+
+  acts.innerHTML = activo
+    ? `<button class="btn btn-secondary" onclick="cerrarDetalle()">Cerrar</button>
+       <button class="btn btn-danger" onclick="darBaja(${e.id})">Dar de baja</button>
+       <button class="btn" onclick="abrirEditar(${e.id})">Editar</button>`
+    : `<button class="btn btn-secondary" onclick="cerrarDetalle()">Cerrar</button>
+       <button class="btn btn-success" onclick="reactivar(${e.id})">Reactivar</button>
+       <button class="btn" onclick="abrirEditar(${e.id})">Editar</button>`;
+
+  document.getElementById('modal-detalle').classList.add('show');
+}
+
+function cerrarDetalle() { document.getElementById('modal-detalle').classList.remove('show'); }
+
+// ═══ FORMULARIO (crear / editar) ══════════════════════════════════════════════
+function abrirNuevo() {
+  editandoId = null;
+  document.getElementById('modal-form-title').textContent = 'Nuevo empleado';
+  document.getElementById('f-nombre').value = '';
+  document.getElementById('f-tipo').value   = 'IMSS';
+  document.getElementById('f-nss').value    = '';
+  document.getElementById('f-curp').value   = '';
+  document.getElementById('f-rfc').value    = '';
+  document.getElementById('f-banco').value  = '';
+  document.getElementById('f-cuenta').value = '';
+  document.getElementById('f-tarifa').value = '';
+  document.getElementById('f-tope').value   = '4410.56';
+  document.getElementById('f-obs').value    = '';
+  document.getElementById('f-activo-display').value = 'SI';
+  onTipoChange();
+  document.getElementById('modal-form').classList.add('show');
+  setTimeout(() => document.getElementById('f-nombre').focus(), 150);
+}
+
+function abrirEditar(id) {
+  const e = empleados.find(x => String(x.id) === String(id));
+  if (!e) return;
+  editandoId = id;
+  document.getElementById('modal-form-title').textContent = 'Editar: ' + e.nombre;
+  document.getElementById('f-nombre').value = e.nombre || '';
+  document.getElementById('f-tipo').value   = e.tipo   || 'IMSS';
+  document.getElementById('f-nss').value    = e.nss    || '';
+  document.getElementById('f-curp').value   = e.curp   || '';
+  document.getElementById('f-rfc').value    = e.rfc    || '';
+  document.getElementById('f-banco').value  = e.banco  || '';
+  document.getElementById('f-cuenta').value = e.cuenta || '';
+  document.getElementById('f-tarifa').value = e.tarifa_diaria || '';
+  document.getElementById('f-tope').value   = e.tope_imss_quincenal || '';
+  document.getElementById('f-obs').value    = e.observaciones || '';
+  document.getElementById('f-activo-display').value = (e.activo === 'SI' || e.activo === true) ? 'SI' : 'NO';
+  onTipoChange();
+  cerrarDetalle();
+  document.getElementById('modal-form').classList.add('show');
+}
+
+function cerrarForm() { document.getElementById('modal-form').classList.remove('show'); }
+
+function onTipoChange() {
+  const tipo = document.getElementById('f-tipo').value;
+  const blockImss = document.getElementById('f-block-imss');
+  const blockTope = document.getElementById('f-block-tope');
+  if (tipo === 'NO_IMSS') {
+    blockImss.style.opacity = '.4';
+    blockTope.style.opacity = '.4';
+    document.getElementById('f-tope').value = '0';
+  } else {
+    blockImss.style.opacity = '1';
+    blockTope.style.opacity = '1';
+    if (parseFloat(document.getElementById('f-tope').value || 0) === 0) {
+      document.getElementById('f-tope').value = '4410.56';
+    }
+  }
+}
+
+async function guardar() {
+  const nombre = document.getElementById('f-nombre').value.trim();
+  if (!nombre) { toast('Falta nombre', 'error'); return; }
+
+  const empleado = {
+    nombre: nombre,
+    tipo:   document.getElementById('f-tipo').value,
+    nss:    document.getElementById('f-nss').value.trim(),
+    curp:   document.getElementById('f-curp').value.trim().toUpperCase(),
+    rfc:    document.getElementById('f-rfc').value.trim().toUpperCase(),
+    banco:  document.getElementById('f-banco').value.trim().toUpperCase(),
+    cuenta: document.getElementById('f-cuenta').value.trim(),
+    tarifa_diaria:        parseFloat(document.getElementById('f-tarifa').value || 0),
+    tope_imss_quincenal:  parseFloat(document.getElementById('f-tope').value   || 0),
+    observaciones:        document.getElementById('f-obs').value.trim()
+  };
+
+  const btn = document.getElementById('btn-guardar');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+
+  try {
+    if (editandoId) {
+      await callBackend('actualizarEmpleado', { id: editandoId, empleado: empleado });
+      toast('Empleado actualizado', 'success');
+    } else {
+      await callBackend('crearEmpleado', { empleado: empleado });
+      toast('Empleado creado', 'success');
+    }
+    cerrarForm();
+    await cargarEmpleados();
+  } catch(err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+// ═══ BAJA / REACTIVAR ═════════════════════════════════════════════════════════
+async function darBaja(id) {
+  const e = empleados.find(x => String(x.id) === String(id));
+  if (!e) return;
+  const ok = confirm('¿Dar de baja a ' + e.nombre + '?\n\nQuedará inactivo pero su histórico se conserva.');
+  if (!ok) return;
+  try {
+    await callBackend('bajaEmpleado', { id: id });
+    toast('Empleado dado de baja', 'success');
+    cerrarDetalle();
+    await cargarEmpleados();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+async function reactivar(id) {
+  const e = empleados.find(x => String(x.id) === String(id));
+  if (!e) return;
+  const ok = confirm('¿Reactivar a ' + e.nombre + '?');
+  if (!ok) return;
+  try {
+    await callBackend('reactivarEmpleado', { id: id });
+    toast('Empleado reactivado', 'success');
+    cerrarDetalle();
+    await cargarEmpleados();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ═══ HELPERS ══════════════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (kind || '');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.classList.remove('show'); }, 2800);
+}
+</script>
+</body>
+</html>
