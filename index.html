@@ -571,7 +571,7 @@ function onBack() {
 }
 
 // ═══ API ══════════════════════════════════════════════════════════════════════
-async function callBackend(action, payload) {
+async function callBackend(action, payload, _retryCount) {
   const body = Object.assign({
     action: action,
     token: session.token,
@@ -584,9 +584,24 @@ async function callBackend(action, payload) {
     redirect: 'follow'
   });
   const json = await resp.json();
-  if (!json.ok) throw new Error(json.error || 'error desconocido');
+  if (!json.ok) {
+    // Retry automático ante "token expirado": el central tiene cache stale a veces
+    if (esErrorDeToken(json.error) && (_retryCount || 0) < 2) {
+      await sleep(400 + (_retryCount || 0) * 600);
+      return callBackend(action, payload, (_retryCount || 0) + 1);
+    }
+    throw new Error(json.error || 'error desconocido');
+  }
   return json;
 }
+
+function esErrorDeToken(err) {
+  if (!err) return false;
+  const e = String(err).toLowerCase();
+  return e.indexOf('token') >= 0 && (e.indexOf('invalido') >= 0 || e.indexOf('inválido') >= 0 || e.indexOf('expirado') >= 0 || e.indexOf('invalid') >= 0 || e.indexOf('expired') >= 0);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ PANEL RH                                                                ═══
@@ -1350,7 +1365,7 @@ async function toggleDia(empleadoId, diaOffset) {
 }
 
 // Versión silenciosa: no lanza, devuelve {ok, error?}
-async function callBackendSilent(action, payload) {
+async function callBackendSilent(action, payload, _retryCount) {
   try {
     const body = Object.assign({
       action: action, token: session.token,
@@ -1362,7 +1377,12 @@ async function callBackendSilent(action, payload) {
       body: JSON.stringify(body),
       redirect: 'follow'
     });
-    return await resp.json();
+    const j = await resp.json();
+    if (j && j.ok === false && esErrorDeToken(j.error) && (_retryCount || 0) < 2) {
+      await sleep(400 + (_retryCount || 0) * 600);
+      return callBackendSilent(action, payload, (_retryCount || 0) + 1);
+    }
+    return j;
   } catch (err) {
     return { ok: false, error: err.message || 'error de red' };
   }
