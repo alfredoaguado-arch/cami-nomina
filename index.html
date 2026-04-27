@@ -77,8 +77,8 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 /* ── MODAL ── */
 .modal-bg{position:fixed;inset:0;background:rgba(26,26,24,.6);display:none;align-items:flex-end;justify-content:center;z-index:50;}
 .modal-bg.show{display:flex;}
-.modal{background:var(--bg);width:100%;max-width:560px;max-height:92vh;border-radius:14px 14px 0 0;display:flex;flex-direction:column;animation:slideUp .2s ease-out;}
-@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal{background:var(--bg);width:100%;max-width:560px;max-height:92vh;border-radius:14px 14px 0 0;display:flex;flex-direction:column;animation:slideUp .12s ease-out;}
+@keyframes slideUp{from{transform:translateY(40%)}to{transform:translateY(0)}}
 .modal-header{padding:16px 18px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:14px 14px 0 0;}
 .modal-title{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
 .modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:0 4px;}
@@ -163,14 +163,20 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .fab-bar > *{flex:1;max-width:240px;}
 
 /* ── DAY MENU MODAL ── */
-.daymenu-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-.daymenu-btn{padding:18px 12px;border-radius:10px;border:0.5px solid var(--border);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;background:var(--card);text-align:center;letter-spacing:.04em;}
-.daymenu-btn:active{transform:scale(.96);}
-.daymenu-btn.T{background:#3B6D11;color:#fff;border-color:#3B6D11;}
-.daymenu-btn.D{background:#888780;color:#fff;border-color:#888780;}
-.daymenu-btn.F{background:#A32D2D;color:#fff;border-color:#A32D2D;}
-.daymenu-btn.B{background:#1A1A18;color:#fff;border-color:#1A1A18;}
-.daymenu-btn.X{grid-column:1/-1;}
+/* ── DAY BUTTON FEEDBACK ── */
+.dia-btn{transition:transform .08s, background-color .08s;}
+.dia-btn:active{transform:scale(.92);}
+
+/* ── LEYENDA DE MARCADO ── */
+.legenda{display:flex;flex-wrap:wrap;gap:6px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;align-items:center;}
+.legenda-titulo{font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-right:4px;}
+.legenda-item{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.04em;}
+.legenda-chip{width:18px;height:18px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;font-family:'Courier New',monospace;}
+.legenda-chip.T{background:#3B6D11;}
+.legenda-chip.D{background:#888780;}
+.legenda-chip.F{background:#A32D2D;}
+.legenda-chip.B{background:#1A1A18;}
+.legenda-chip.X{background:var(--bg);color:var(--muted);border:0.5px solid var(--border);}
 
 /* ── EMPTY STATE ── */
 .empty-state{padding:32px 16px;text-align:center;}
@@ -256,6 +262,14 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <!-- ═══ PANEL SUPERVISOR — DETALLE DE CAPTURA ═══ -->
 <div id="panel-cap" class="container" style="display:none">
   <div class="cap-toolbar" id="cap-detail-header"></div>
+  <div class="legenda" id="legenda-marcas">
+    <span class="legenda-titulo">Toca un día para cambiar:</span>
+    <span class="legenda-item"><span class="legenda-chip X">·</span> Vacío</span>
+    <span class="legenda-item"><span class="legenda-chip T">T</span> Trabajó</span>
+    <span class="legenda-item"><span class="legenda-chip D">D</span> Descanso</span>
+    <span class="legenda-item"><span class="legenda-chip F">F</span> Falta</span>
+    <span class="legenda-item"><span class="legenda-chip B">B</span> Baja</span>
+  </div>
   <div class="section-header">
     <span id="count-emp-cap">Empleados</span>
     <button class="btn btn-sm" onclick="abrirAgregarEmp()">+ Agregar</button>
@@ -366,6 +380,13 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
         <select class="field-select" id="nc-proyecto"></select>
         <div class="field-help">Solo se muestran tus obras asignadas</div>
       </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
+          <input type="checkbox" id="nc-heredar" checked style="accent-color:#1A1A18;width:16px;height:16px;cursor:pointer;"/>
+          Copiar empleados de la quincena anterior
+        </label>
+        <div class="field-help">Si esta obra ya tuvo nómina antes, traemos los mismos empleados sin marcas para que solo agregues días.</div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="cerrarNuevaCap()">Cancelar</button>
@@ -402,24 +423,6 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
 </div>
 
-<!-- ═══ MODAL: marcar día (menú) ═══ -->
-<div class="modal-bg" id="modal-day">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="modal-day-title">Día</div>
-      <button class="modal-close" onclick="cerrarMenuDia()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="daymenu-grid">
-        <button class="daymenu-btn T" onclick="setMarcaDia('T')">Trabajó</button>
-        <button class="daymenu-btn D" onclick="setMarcaDia('D')">Descanso</button>
-        <button class="daymenu-btn F" onclick="setMarcaDia('F')">Falta</button>
-        <button class="daymenu-btn B" onclick="setMarcaDia('B')">Baja</button>
-        <button class="daymenu-btn X" onclick="setMarcaDia('')">Limpiar</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ═══ MODAL: extras ═══ -->
 <div class="modal-bg" id="modal-extra">
@@ -496,7 +499,6 @@ let quincenaVigente = null;
 let capturas = [];
 let capturaActual = null;          // captura abierta en panel-cap
 let datosCaptura = null;           // {captura, quincena, empleados, dias, extras, viaticos}
-let dayMenuCtx = null;             // {empleado_id, dia_offset}
 let extraCtx = null;               // {empleado_id, extra_id?}
 let viaticoCtx = null;             // {empleado_id, viatico_id?}
 
@@ -874,12 +876,21 @@ function cerrarNuevaCap() { document.getElementById('modal-nueva-cap').classList
 
 async function crearCaptura() {
   const proyecto = document.getElementById('nc-proyecto').value;
+  const heredar = document.getElementById('nc-heredar')?.checked !== false;
   const btn = document.getElementById('btn-crear-cap');
   btn.disabled = true; btn.textContent = 'Creando…';
   try {
-    const r = await callBackend('crearCaptura', { proyecto, quincena_id: quincenaVigente.id });
+    const r = await callBackend('crearCaptura', {
+      proyecto,
+      quincena_id: quincenaVigente.id,
+      heredar_empleados: heredar
+    });
     cerrarNuevaCap();
-    toast('Captura creada', 'success');
+    if (r.empleados_heredados > 0) {
+      toast(`Captura creada con ${r.empleados_heredados} empleado${r.empleados_heredados === 1 ? '' : 's'} heredado${r.empleados_heredados === 1 ? '' : 's'}`, 'success');
+    } else {
+      toast('Captura creada', 'success');
+    }
     await cargarCapturas();
     abrirCaptura(r.captura_id);
   } catch(err) { toast(err.message, 'error'); }
@@ -965,7 +976,7 @@ function renderEmpleadoCap(emp, editable) {
     const d = dias.find(x => parseInt(x.dia_offset,10) === i);
     const marca = d ? String(d.marca || '').toUpperCase() : '';
     const fecha = fechaDeOffset(i);
-    const onclickAttr = editable ? `onclick="abrirMenuDia(${emp.id}, ${i})"` : '';
+    const onclickAttr = editable ? `onclick="toggleDia(${emp.id}, ${i})"` : '';
     cal += `<button class="dia-btn ${marca}" ${onclickAttr}><span class="dia-num">${fecha}</span><span class="dia-mark">${marca || '·'}</span></button>`;
   }
 
@@ -1171,59 +1182,210 @@ function pickAddEmp(idx) {
 
 async function confirmarAgregarEmp() {
   if (!addEmpSelected) return;
-  const btn = document.getElementById('btn-add-emp-confirm');
-  btn.disabled = true; btn.textContent = 'Agregando…';
+  const emp = addEmpSelected;
+  cerrarAgregarEmp();
+
+  // 1. UPDATE OPTIMISTA — agregar el empleado al estado local y rerenderizar la lista
+  if (!datosCaptura.empleados.find(e => String(e.id) === String(emp.id))) {
+    datosCaptura.empleados.push(emp);
+    rerenderListaEmpleados();
+  }
+
+  // 2. SYNC EN BACKGROUND
   try {
-    await callBackend('agregarEmpleadoCap', { captura_id: capturaActual, empleado_id: addEmpSelected.id });
-    cerrarAgregarEmp();
-    toast('Empleado agregado', 'success');
-    await cargarCaptura(capturaActual);
-  } catch(err) { toast(err.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'Agregar'; }
+    const r = await callBackendSilent('agregarEmpleadoCap', {
+      captura_id: capturaActual,
+      empleado_id: emp.id
+    });
+    if (!r.ok) {
+      // Revertir
+      const k = datosCaptura.empleados.findIndex(e => String(e.id) === String(emp.id));
+      if (k >= 0) datosCaptura.empleados.splice(k, 1);
+      rerenderListaEmpleados();
+      toast(r.error || 'Error agregando', 'error');
+    }
+  } catch(err) {
+    const k = datosCaptura.empleados.findIndex(e => String(e.id) === String(emp.id));
+    if (k >= 0) datosCaptura.empleados.splice(k, 1);
+    rerenderListaEmpleados();
+    toast('Error de red', 'error');
+  }
 }
 
 async function quitarEmpleadoCap(empleadoId) {
   const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
   if (!emp || !confirm('¿Quitar a ' + emp.nombre + ' de esta captura? Se borran sus días, extras y viáticos.')) return;
-  try {
-    await callBackend('quitarEmpleadoCap', { captura_id: capturaActual, empleado_id: empleadoId });
-    toast('Empleado quitado', 'success');
-    await cargarCaptura(capturaActual);
-  } catch(err) { toast(err.message, 'error'); }
-}
 
-// ─── Marcar día (menú modal) ──────────────────────────────────────────────────
-function abrirMenuDia(empleadoId, diaOffset) {
-  dayMenuCtx = { empleado_id: empleadoId, dia_offset: diaOffset };
-  const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
-  document.getElementById('modal-day-title').textContent =
-    (emp ? emp.nombre.split(' ').slice(0,2).join(' ') : 'Día') + ' · ' + fechaDeOffset(diaOffset);
-  document.getElementById('modal-day').classList.add('show');
-}
-function cerrarMenuDia() { document.getElementById('modal-day').classList.remove('show'); dayMenuCtx = null; }
+  // 1. UPDATE OPTIMISTA
+  const empBackup = { ...emp };
+  const diasBackup = datosCaptura.dias.filter(d => String(d.empleado_id) === String(empleadoId));
+  const extrasBackup = datosCaptura.extras.filter(e => String(e.empleado_id) === String(empleadoId));
+  const viaticosBackup = datosCaptura.viaticos.filter(v => String(v.empleado_id) === String(empleadoId));
 
-async function setMarcaDia(marca) {
-  if (!dayMenuCtx) return;
-  const ctx = dayMenuCtx;
-  cerrarMenuDia();
+  datosCaptura.empleados = datosCaptura.empleados.filter(e => String(e.id) !== String(empleadoId));
+  datosCaptura.dias = datosCaptura.dias.filter(d => String(d.empleado_id) !== String(empleadoId));
+  datosCaptura.extras = datosCaptura.extras.filter(e => String(e.empleado_id) !== String(empleadoId));
+  datosCaptura.viaticos = datosCaptura.viaticos.filter(v => String(v.empleado_id) !== String(empleadoId));
+  rerenderListaEmpleados();
+
+  // 2. SYNC
   try {
-    await callBackend('marcarDia', {
+    const r = await callBackendSilent('quitarEmpleadoCap', {
       captura_id: capturaActual,
-      empleado_id: ctx.empleado_id,
-      dia_offset: ctx.dia_offset,
-      marca: marca
+      empleado_id: empleadoId
     });
-    await cargarCaptura(capturaActual);
+    if (!r.ok) {
+      // Revertir
+      datosCaptura.empleados.push(empBackup);
+      datosCaptura.dias.push(...diasBackup);
+      datosCaptura.extras.push(...extrasBackup);
+      datosCaptura.viaticos.push(...viaticosBackup);
+      rerenderListaEmpleados();
+      toast(r.error || 'Error quitando', 'error');
+    }
   } catch(err) {
-    if (err.message === 'CONFLICTO') {
-      // El backend puso la información en error pero fetch nos quita los detalles. Re-llamamos para obtenerlos.
-      toast('Conflicto: este empleado ya tiene día marcado en otra obra', 'error');
-    } else if (err.message.indexOf('CONFLICTO') === 0) {
-      toast(err.message, 'error');
+    datosCaptura.empleados.push(empBackup);
+    datosCaptura.dias.push(...diasBackup);
+    datosCaptura.extras.push(...extrasBackup);
+    datosCaptura.viaticos.push(...viaticosBackup);
+    rerenderListaEmpleados();
+    toast('Error de red', 'error');
+  }
+}
+
+/** Re-renderiza toda la lista de empleados sin tocar el backend. */
+function rerenderListaEmpleados() {
+  const c = datosCaptura?.captura;
+  if (!c) return;
+  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  const cont = document.getElementById('lista-emp-cap');
+  if (datosCaptura.empleados.length === 0) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">👷</div>
+        <div class="empty-state-title">Sin empleados todavía</div>
+        <div class="empty-state-msg">Click en "+ Agregar" para registrar un empleado en esta obra.</div>
+      </div>`;
+  } else {
+    cont.innerHTML = datosCaptura.empleados.map(emp => renderEmpleadoCap(emp, editable)).join('');
+  }
+  document.getElementById('count-emp-cap').textContent =
+    datosCaptura.empleados.length + ' empleado' + (datosCaptura.empleados.length === 1 ? '' : 's');
+}
+
+// ─── Marcar día (TAP CÍCLICO: vacío → T → D → F → B → vacío) ─────────────────
+const CICLO_MARCAS = ['', 'T', 'D', 'F', 'B'];
+
+async function toggleDia(empleadoId, diaOffset) {
+  const c = datosCaptura?.captura;
+  if (!c) return;
+  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  if (!editable) return;
+
+  // Marca actual
+  const dias = datosCaptura.dias;
+  const ix = dias.findIndex(d =>
+    String(d.empleado_id) === String(empleadoId) &&
+    parseInt(d.dia_offset, 10) === diaOffset
+  );
+  const marcaActual = ix >= 0 ? String(dias[ix].marca || '').toUpperCase() : '';
+  const cicloIx = CICLO_MARCAS.indexOf(marcaActual);
+  const marca = CICLO_MARCAS[(cicloIx + 1) % CICLO_MARCAS.length];
+
+  const previo = ix >= 0 ? { ...dias[ix] } : null;
+
+  // 1. UPDATE OPTIMISTA
+  if (marca === '') {
+    if (ix >= 0) dias.splice(ix, 1);
+  } else {
+    if (ix >= 0) {
+      dias[ix].marca = marca;
     } else {
-      toast(err.message, 'error');
+      dias.push({
+        id: '__pending__' + Date.now(),
+        captura_id: capturaActual,
+        empleado_id: empleadoId,
+        dia_offset: diaOffset,
+        marca: marca
+      });
     }
   }
+  rerenderEmpleadoEnCaptura(empleadoId);
+
+  // 2. SYNC EN SEGUNDO PLANO
+  const revertir = () => {
+    const k = datosCaptura.dias.findIndex(d =>
+      String(d.empleado_id) === String(empleadoId) &&
+      parseInt(d.dia_offset, 10) === diaOffset
+    );
+    if (previo === null) {
+      if (k >= 0) datosCaptura.dias.splice(k, 1);
+    } else {
+      if (k >= 0) datosCaptura.dias[k] = previo;
+      else datosCaptura.dias.push(previo);
+    }
+    rerenderEmpleadoEnCaptura(empleadoId);
+  };
+
+  try {
+    const r = await callBackendSilent('marcarDia', {
+      captura_id: capturaActual,
+      empleado_id: empleadoId,
+      dia_offset: diaOffset,
+      marca: marca
+    });
+    if (!r.ok) {
+      revertir();
+      if (r.error === 'CONFLICTO' && r.conflicto) {
+        const cf = r.conflicto;
+        toast(`Conflicto: ${empleadoNombreShort(empleadoId)} ya marcó ${fechaDeOffset(cf.dia_offset)} en ${cf.otro_proyecto} (${cf.otro_supervisor})`, 'error');
+      } else {
+        toast(r.error || 'Error guardando', 'error');
+      }
+    }
+  } catch (err) {
+    revertir();
+    toast('Error de red', 'error');
+  }
+}
+
+// Versión silenciosa: no lanza, devuelve {ok, error?}
+async function callBackendSilent(action, payload) {
+  try {
+    const body = Object.assign({
+      action: action, token: session.token,
+      mis_proyectos: (session.proyectos || '')
+    }, payload || {});
+    const resp = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    });
+    return await resp.json();
+  } catch (err) {
+    return { ok: false, error: err.message || 'error de red' };
+  }
+}
+
+function empleadoNombreShort(empId) {
+  const e = (datosCaptura?.empleados || []).find(x => String(x.id) === String(empId));
+  return e ? e.nombre.split(' ').slice(0,2).join(' ') : 'Empleado';
+}
+
+// Re-renderiza solo la tarjeta de un empleado dentro del panel de captura (sin recargar del backend)
+function rerenderEmpleadoEnCaptura(empleadoId) {
+  const c = datosCaptura?.captura;
+  if (!c) return;
+  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  const emp = (datosCaptura.empleados || []).find(x => String(x.id) === String(empleadoId));
+  if (!emp) return;
+  const card = document.querySelector(`.empleado-cap[data-emp="${empleadoId}"]`);
+  if (!card) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderEmpleadoCap(emp, editable).trim();
+  const nuevo = tmp.firstElementChild;
+  if (nuevo) card.replaceWith(nuevo);
 }
 
 // ─── Extras ───────────────────────────────────────────────────────────────────
