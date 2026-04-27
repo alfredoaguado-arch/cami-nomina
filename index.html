@@ -177,6 +177,17 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .empty-state-icon{font-size:32px;margin-bottom:10px;}
 .empty-state-title{font-size:13px;font-weight:700;margin-bottom:4px;}
 .empty-state-msg{font-size:11px;color:var(--muted);line-height:1.5;}
+
+/* ── AUTOCOMPLETE ── */
+.ac-row{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid var(--border);}
+.ac-row:last-child{border-bottom:none;}
+.ac-row:hover,.ac-row.selected{background:var(--light);}
+.ac-row.disabled{opacity:.45;cursor:not-allowed;}
+.ac-avatar{width:30px;height:30px;border-radius:50%;background:var(--dark);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.ac-info{flex:1;min-width:0;}
+.ac-name{font-size:12px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ac-meta{font-size:10px;color:var(--muted);margin-top:2px;}
+.ac-empty{padding:14px;text-align:center;font-size:11px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -372,12 +383,21 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
     </div>
     <div class="modal-body">
       <div class="field">
-        <input class="field-input" id="add-emp-search" placeholder="Buscar empleado..." oninput="filtrarAddEmp()"/>
+        <label class="field-label">Buscar empleado</label>
+        <div style="position:relative">
+          <input class="field-input" id="add-emp-search" placeholder="Escribe el nombre..."
+                 autocomplete="off"
+                 oninput="filtrarAddEmp()"
+                 onkeydown="addEmpKey(event)"/>
+          <div id="add-emp-ac" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:0.5px solid var(--border);border-top:none;border-radius:0 0 8px 8px;z-index:60;max-height:280px;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,.12);"></div>
+        </div>
+        <div class="field-help" id="add-emp-hint">Empieza a escribir para ver coincidencias.</div>
       </div>
-      <div id="add-emp-lista"></div>
+      <div id="add-emp-selected" style="display:none;padding:14px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;margin-bottom:10px;"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="cerrarAgregarEmp()">Cerrar</button>
+      <button class="btn btn-secondary" onclick="cerrarAgregarEmp()">Cancelar</button>
+      <button class="btn" id="btn-add-emp-confirm" onclick="confirmarAgregarEmp()" disabled>Agregar</button>
     </div>
   </div>
 </div>
@@ -780,12 +800,16 @@ async function initSupervisor() {
     // 3. Cargar mis capturas
     await cargarCapturas();
 
-    // Cargar empleados (los necesitamos para agregar a captura)
+    // Cargar empleados activos (endpoint público para supervisores)
     if (empleados.length === 0) {
       try {
-        const r = await callBackend('listarEmpleados', { incluir_inactivos: false });
+        const r = tieneRH
+          ? await callBackend('listarEmpleados', { incluir_inactivos: false })
+          : await callBackend('listarEmpleadosActivos');
         empleados = r.empleados || [];
-      } catch(e) { /* ignore, RH-only error si no tiene permiso */ }
+      } catch(e) {
+        console.warn('No se pudo cargar catálogo de empleados:', e.message);
+      }
     }
   } catch(err) {
     toast(err.message, 'error');
@@ -1007,43 +1031,155 @@ function fechaDeOffset(i) {
   return (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + (d.getMonth()+1 < 10 ? '0' : '') + (d.getMonth()+1);
 }
 
-// ─── Agregar empleado a captura ───────────────────────────────────────────────
+// ─── Agregar empleado a captura (autocompletado) ──────────────────────────────
+let addEmpIndex     = -1;
+let addEmpMatches   = [];
+let addEmpSelected  = null;
+
 function abrirAgregarEmp() {
   document.getElementById('add-emp-search').value = '';
-  filtrarAddEmp();
+  document.getElementById('add-emp-ac').style.display = 'none';
+  document.getElementById('add-emp-selected').style.display = 'none';
+  document.getElementById('btn-add-emp-confirm').disabled = true;
+  document.getElementById('add-emp-hint').textContent = 'Empieza a escribir para ver coincidencias.';
+  addEmpSelected = null;
+  addEmpIndex = -1;
+  addEmpMatches = [];
   document.getElementById('modal-add-emp').classList.add('show');
+  setTimeout(() => document.getElementById('add-emp-search').focus(), 150);
 }
-function cerrarAgregarEmp() { document.getElementById('modal-add-emp').classList.remove('show'); }
+function cerrarAgregarEmp() {
+  document.getElementById('modal-add-emp').classList.remove('show');
+  addEmpSelected = null;
+}
 
 function filtrarAddEmp() {
-  const search = (document.getElementById('add-emp-search').value || '').trim().toUpperCase();
-  const yaEn = (datosCaptura?.empleados || []).map(e => String(e.id));
-  const visibles = empleados
-    .filter(e => (e.activo === 'SI' || e.activo === true))
-    .filter(e => yaEn.indexOf(String(e.id)) < 0)
-    .filter(e => !search || (e.nombre || '').toUpperCase().indexOf(search) >= 0)
-    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+  const search = (document.getElementById('add-emp-search').value || '').trim();
+  const ac     = document.getElementById('add-emp-ac');
+  const hint   = document.getElementById('add-emp-hint');
+  addEmpIndex = -1;
 
-  const cont = document.getElementById('add-emp-lista');
-  if (visibles.length === 0) { cont.innerHTML = '<div class="empty">Sin resultados.</div>'; return; }
-  cont.innerHTML = visibles.map(e => `
-    <div class="emp-card" onclick="agregarEmpleadoACaptura(${e.id})">
-      <div class="emp-name">${escapeHtml(e.nombre)}</div>
-      <div class="emp-meta">
-        <span class="emp-tag ${e.tipo === 'NO_IMSS' ? 'no-imss' : 'imss'}">${e.tipo === 'NO_IMSS' ? 'No IMSS' : 'IMSS'}</span>
-        ${parseFloat(e.tarifa_diaria||0) > 0 ? '' : '<span class="emp-tag sin-tarifa">Sin tarifa</span>'}
-      </div>
-    </div>
-  `).join('');
+  // Si el usuario edita después de seleccionar, deselecciona
+  if (addEmpSelected) {
+    addEmpSelected = null;
+    document.getElementById('add-emp-selected').style.display = 'none';
+    document.getElementById('btn-add-emp-confirm').disabled = true;
+  }
+
+  if (!search) {
+    ac.style.display = 'none';
+    addEmpMatches = [];
+    hint.textContent = 'Empieza a escribir para ver coincidencias.';
+    return;
+  }
+
+  const norm = s => String(s || '').toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const q = norm(search);
+
+  const yaEnCaptura = (datosCaptura?.empleados || []).map(e => String(e.id));
+
+  addEmpMatches = empleados
+    .filter(e => (e.activo === 'SI' || e.activo === true))
+    .filter(e => norm(e.nombre).indexOf(q) >= 0)
+    .map(e => ({
+      ...e,
+      _yaEn: yaEnCaptura.indexOf(String(e.id)) >= 0
+    }))
+    .sort((a, b) => {
+      // Los ya en captura al final
+      if (a._yaEn !== b._yaEn) return a._yaEn ? 1 : -1;
+      return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    })
+    .slice(0, 10);
+
+  if (addEmpMatches.length === 0) {
+    ac.innerHTML = '<div class="ac-empty">Sin coincidencias en el catálogo activo.</div>';
+    ac.style.display = 'block';
+    hint.textContent = '';
+    return;
+  }
+
+  ac.innerHTML = addEmpMatches.map((e, i) => {
+    const ini = (e.nombre || '').split(' ').filter(Boolean).map(w => w[0]).slice(0,2).join('').toUpperCase();
+    const tipoTxt = e.tipo === 'NO_IMSS' ? 'No IMSS' : 'IMSS';
+    const tarifa  = parseFloat(e.tarifa_diaria || 0);
+    const meta = e._yaEn
+      ? '<span style="color:var(--err)">Ya está en esta captura</span>'
+      : `${tipoTxt} · ${tarifa > 0 ? '$' + tarifa.toFixed(2) + '/día' : 'Sin tarifa'}`;
+    return `
+      <div class="ac-row ${e._yaEn ? 'disabled' : ''}" data-idx="${i}" onclick="${e._yaEn ? '' : `pickAddEmp(${i})`}">
+        <div class="ac-avatar">${escapeHtml(ini)}</div>
+        <div class="ac-info">
+          <div class="ac-name">${escapeHtml(e.nombre)}</div>
+          <div class="ac-meta">${meta}</div>
+        </div>
+      </div>`;
+  }).join('');
+  ac.style.display = 'block';
+  hint.textContent = addEmpMatches.length + (addEmpMatches.length === 1 ? ' coincidencia' : ' coincidencias') + '. Click o ↓↑ + Enter.';
 }
 
-async function agregarEmpleadoACaptura(empleadoId) {
+function addEmpKey(e) {
+  const ac = document.getElementById('add-emp-ac');
+  if (ac.style.display === 'none' || addEmpMatches.length === 0) return;
+  const items = ac.querySelectorAll('.ac-row:not(.disabled)');
+  if (items.length === 0) return;
+
+  if (e.key === 'ArrowDown') {
+    addEmpIndex = Math.min(addEmpIndex + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === addEmpIndex));
+    items[addEmpIndex]?.scrollIntoView({block:'nearest'});
+    e.preventDefault();
+  } else if (e.key === 'ArrowUp') {
+    addEmpIndex = Math.max(addEmpIndex - 1, 0);
+    items.forEach((el, i) => el.classList.toggle('selected', i === addEmpIndex));
+    items[addEmpIndex]?.scrollIntoView({block:'nearest'});
+    e.preventDefault();
+  } else if (e.key === 'Enter') {
+    if (addEmpIndex >= 0) {
+      const idx = parseInt(items[addEmpIndex].dataset.idx, 10);
+      pickAddEmp(idx);
+    } else if (items.length === 1) {
+      const idx = parseInt(items[0].dataset.idx, 10);
+      pickAddEmp(idx);
+    }
+    e.preventDefault();
+  } else if (e.key === 'Escape') {
+    ac.style.display = 'none';
+  }
+}
+
+function pickAddEmp(idx) {
+  const emp = addEmpMatches[idx];
+  if (!emp || emp._yaEn) return;
+  addEmpSelected = emp;
+  document.getElementById('add-emp-search').value = emp.nombre;
+  document.getElementById('add-emp-ac').style.display = 'none';
+  const tipoTxt = emp.tipo === 'NO_IMSS' ? 'No IMSS' : 'IMSS';
+  const tarifa  = parseFloat(emp.tarifa_diaria || 0);
+  const tarifaTxt = tarifa > 0 ? '$' + tarifa.toFixed(2) + '/día' : '<span style="color:var(--err)">Sin tarifa capturada</span>';
+  document.getElementById('add-emp-selected').innerHTML = `
+    <div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Seleccionado</div>
+    <div style="font-size:13px;font-weight:700;line-height:1.3">${escapeHtml(emp.nombre)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">${tipoTxt} · ${tarifaTxt} · ${escapeHtml(emp.banco || '—')}</div>
+  `;
+  document.getElementById('add-emp-selected').style.display = 'block';
+  document.getElementById('btn-add-emp-confirm').disabled = false;
+  document.getElementById('add-emp-hint').textContent = '';
+}
+
+async function confirmarAgregarEmp() {
+  if (!addEmpSelected) return;
+  const btn = document.getElementById('btn-add-emp-confirm');
+  btn.disabled = true; btn.textContent = 'Agregando…';
   try {
-    await callBackend('agregarEmpleadoCap', { captura_id: capturaActual, empleado_id: empleadoId });
+    await callBackend('agregarEmpleadoCap', { captura_id: capturaActual, empleado_id: addEmpSelected.id });
     cerrarAgregarEmp();
     toast('Empleado agregado', 'success');
     await cargarCaptura(capturaActual);
   } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Agregar'; }
 }
 
 async function quitarEmpleadoCap(empleadoId) {
