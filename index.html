@@ -344,6 +344,25 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   <div class="fab-bar" id="aprob-cap-fab"></div>
 </div>
 
+<!-- ═══ PANEL ADMINISTRATIVA — Mariana ═══ -->
+<div id="panel-admin" class="container" style="display:none">
+  <div class="cap-toolbar" id="admin-header"></div>
+  <div class="legenda" id="admin-legenda" style="display:none">
+    <span class="legenda-titulo">Toca un día para cambiar:</span>
+    <span class="legenda-item"><span class="legenda-chip X">·</span> Vacío</span>
+    <span class="legenda-item"><span class="legenda-chip T">T</span> Trabajó</span>
+    <span class="legenda-item"><span class="legenda-chip D">D</span> Descanso</span>
+    <span class="legenda-item"><span class="legenda-chip F">F</span> Falta</span>
+    <span class="legenda-item"><span class="legenda-chip B">B</span> Baja</span>
+  </div>
+  <div class="section-header" id="admin-section-header" style="display:none">
+    <span id="admin-count-emp">Empleados</span>
+    <button class="btn btn-sm" id="admin-btn-agregar" onclick="abrirAgregarEmpAdmin()">+ Agregar</button>
+  </div>
+  <div id="admin-lista-emp"></div>
+  <div class="fab-bar" id="admin-fab"></div>
+</div>
+
 <!-- ═══ MODAL: form de empleado (RH) ═══ -->
 <div class="modal-bg" id="modal-form-emp">
   <div class="modal">
@@ -584,6 +603,44 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
 </div>
 
+<!-- ═══ MODAL: cerrar captura administrativa ═══ -->
+<div class="modal-bg" id="modal-cerrar-admin">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Cerrar nómina administrativa</div>
+      <button class="modal-close" onclick="cerrarCerrarAdmin()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-help" style="margin-bottom:10px;">Una vez cerrada, no podrás editar la captura. Si necesitas modificar algo después, podrás reabrirla desde el botón "Reabrir" o pedirle a Alfredo que lo haga.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarCerrarAdmin()">Cancelar</button>
+      <button class="btn btn-success" id="btn-confirmar-cerrar-admin" onclick="confirmarCerrarAdmin()">Cerrar nómina</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: reabrir captura administrativa ═══ -->
+<div class="modal-bg" id="modal-reabrir-admin">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Reabrir nómina administrativa</div>
+      <button class="modal-close" onclick="cerrarReabrirAdmin()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-help" style="margin-bottom:10px;">La captura volverá a BORRADOR para que puedas editarla.</div>
+      <div class="field">
+        <label class="field-label">Motivo (opcional)</label>
+        <input class="field-input" id="reab-admin-motivo" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarReabrirAdmin()">Cancelar</button>
+      <button class="btn" id="btn-confirmar-reabrir-admin" onclick="confirmarReabrirAdmin()">Reabrir</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -593,8 +650,8 @@ const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
 
 // ═══ ESTADO ═══════════════════════════════════════════════════════════════════
 let session = null;
-let tieneRH = false, tieneSup = false, tieneAprob = false;
-let vista = 'rh'; // 'rh' | 'sup' | 'cap-detail' | 'aprob' | 'aprob-cap'
+let tieneRH = false, tieneSup = false, tieneAprob = false, tieneFin = false;
+let vista = 'rh'; // 'rh' | 'sup' | 'cap-detail' | 'aprob' | 'aprob-cap' | 'admin'
 
 // RH
 let empleados = [];
@@ -617,6 +674,9 @@ let aprobConflictos = [];          // conflictos detectados
 let aprobCapturaActual = null;     // captura abierta en panel-aprob-cap
 let aprobDatosCaptura = null;      // payload de la captura abierta
 
+// Administrativa (Fase 3c)
+let adminDatosCaptura = null;      // payload de la captura administrativa
+
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
 
@@ -633,16 +693,17 @@ function init() {
   tieneRH    = apps.indexOf('nomina-rh') >= 0;
   tieneSup   = apps.indexOf('nomina-supervisor') >= 0;
   tieneAprob = apps.indexOf('nomina-aprobar') >= 0;
+  tieneFin   = apps.indexOf('nomina-finanzas') >= 0;
 
-  if (!tieneRH && !tieneSup && !tieneAprob) {
+  if (!tieneRH && !tieneSup && !tieneAprob && !tieneFin) {
     document.getElementById('no-access').style.display = 'block';
     return;
   }
 
   buildTabs();
-  // Vista inicial: aprobación si la tiene (es lo más importante para el aprobador),
-  // si no supervisor, si no RH
-  if (tieneAprob)      cambiarVista('aprob');
+  // Vista inicial: administrativa (si la tiene), si no aprobación, si no supervisor, si no RH
+  if (tieneFin)        cambiarVista('admin');
+  else if (tieneAprob) cambiarVista('aprob');
   else if (tieneSup)   cambiarVista('sup');
   else                 cambiarVista('rh');
 }
@@ -650,6 +711,13 @@ function init() {
 function buildTabs() {
   const tabs = document.getElementById('tabs');
   tabs.innerHTML = '';
+  if (tieneFin) {
+    const t = document.createElement('button');
+    t.className = 'tab'; t.dataset.tab = 'admin';
+    t.textContent = 'Administrativa';
+    t.onclick = () => cambiarVista('admin');
+    tabs.appendChild(t);
+  }
   if (tieneAprob) {
     const t = document.createElement('button');
     t.className = 'tab'; t.dataset.tab = 'aprob';
@@ -685,6 +753,7 @@ function cambiarVista(v) {
   document.getElementById('panel-cap').style.display      = (v === 'cap-detail') ? 'block' : 'none';
   document.getElementById('panel-aprob').style.display    = (v === 'aprob')    ? 'block' : 'none';
   document.getElementById('panel-aprob-cap').style.display = (v === 'aprob-cap') ? 'block' : 'none';
+  document.getElementById('panel-admin').style.display    = (v === 'admin')    ? 'block' : 'none';
 
   document.getElementById('topbar-subtitle').textContent =
     v === 'rh'        ? 'Nómina · Catálogo' :
@@ -692,6 +761,7 @@ function cambiarVista(v) {
     v === 'cap-detail' ? 'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '') :
     v === 'aprob'     ? 'Nómina · Aprobación' :
     v === 'aprob-cap' ? 'Nómina · Revisar ' + (aprobDatosCaptura?.captura?.proyecto || '') :
+    v === 'admin'     ? 'Nómina · Administrativa' :
     'Nómina';
 
   if (v === 'rh' && empleados.length === 0)              cargarEmpleados();
@@ -699,6 +769,7 @@ function cambiarVista(v) {
   if (v === 'cap-detail' && capturaActual)               cargarCaptura(capturaActual);
   if (v === 'aprob')                                     initAprob();
   if (v === 'aprob-cap' && aprobCapturaActual)           cargarCapturaAprob(aprobCapturaActual);
+  if (v === 'admin')                                     initAdmin();
 }
 
 function onBack() {
@@ -1059,6 +1130,14 @@ function abrirCaptura(id) {
 }
 
 async function cargarCaptura(id) {
+  const esAdmin = vista === 'admin';
+  if (esAdmin) {
+    // Para la administrativa, recargamos con obtenerCapturaAdmin
+    await recargarAdmin();
+    // Mantener contexto activo
+    activarContextoAdmin();
+    return;
+  }
   const cont = document.getElementById('lista-emp-cap');
   cont.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try {
@@ -1409,20 +1488,32 @@ async function quitarEmpleadoCap(empleadoId) {
 function rerenderListaEmpleados() {
   const c = datosCaptura?.captura;
   if (!c) return;
-  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
-  const cont = document.getElementById('lista-emp-cap');
+  const esAdmin = vista === 'admin';
+  // Para admin: editable solo si BORRADOR. Para obra: BORRADOR/ENVIADA/RECHAZADA.
+  const editable = esAdmin
+    ? c.estado === 'BORRADOR'
+    : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  const contId    = esAdmin ? 'admin-lista-emp'    : 'lista-emp-cap';
+  const countId   = esAdmin ? 'admin-count-emp'    : 'count-emp-cap';
+  const emptyMsg  = esAdmin
+    ? 'Click en "+ Agregar" para registrar un empleado en la nómina administrativa.'
+    : 'Click en "+ Agregar" para registrar un empleado en esta obra.';
+  const cont = document.getElementById(contId);
+  if (!cont) return;
   if (datosCaptura.empleados.length === 0) {
     cont.innerHTML = `
       <div class="empty-state">
         <div class="empty-state-icon">👷</div>
         <div class="empty-state-title">Sin empleados todavía</div>
-        <div class="empty-state-msg">Click en "+ Agregar" para registrar un empleado en esta obra.</div>
+        <div class="empty-state-msg">${emptyMsg}</div>
       </div>`;
   } else {
     cont.innerHTML = datosCaptura.empleados.map(emp => renderEmpleadoCap(emp, editable)).join('');
   }
-  document.getElementById('count-emp-cap').textContent =
+  document.getElementById(countId).textContent =
     datosCaptura.empleados.length + ' empleado' + (datosCaptura.empleados.length === 1 ? '' : 's');
+  // Si es admin, también sincronizamos adminDatosCaptura
+  if (esAdmin) adminDatosCaptura = datosCaptura;
 }
 
 // ─── Marcar día (TAP CÍCLICO: vacío → T → D → F → B → vacío) ─────────────────
@@ -1903,6 +1994,169 @@ async function confirmarReabrir() {
     cerrarReabrir();
     toast('Captura reabierta', 'success');
     cambiarVista('aprob');
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ FASE 3c: CAPTURA ADMINISTRATIVA (Mariana)                               ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PROYECTO_ADMIN_FE = 'INDIRECTOS_OFICINA';
+
+async function initAdmin() {
+  const cont = document.getElementById('admin-lista-emp');
+  cont.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando captura administrativa...</div>';
+  document.getElementById('admin-section-header').style.display = 'none';
+  document.getElementById('admin-legenda').style.display = 'none';
+  document.getElementById('admin-fab').innerHTML = '';
+
+  try {
+    const r = await callBackend('obtenerCapturaAdmin', {});
+    adminDatosCaptura = r;
+
+    // Cargar empleados activos si aún no están en memoria (para el "Agregar")
+    if (empleados.length === 0) {
+      try {
+        const er = tieneRH
+          ? await callBackend('listarEmpleados', { incluir_inactivos: false })
+          : await callBackend('listarEmpleadosActivos');
+        empleados = er.empleados || [];
+      } catch(e) {
+        console.warn('No se pudo cargar catálogo de empleados:', e.message);
+      }
+    }
+
+    renderAdminDetalle();
+  } catch(err) {
+    cont.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderAdminDetalle() {
+  const c = adminDatosCaptura.captura;
+  const q = adminDatosCaptura.quincena;
+  const editable = c.estado === 'BORRADOR';
+
+  // Header
+  const hdr = document.getElementById('admin-header');
+  hdr.innerHTML = `
+    <div class="cap-toolbar-row">
+      <div>
+        <div class="cap-proj">Nómina administrativa</div>
+        <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
+        ${c.aprobada_por ? `<div class="aprob-cap-supervisor">Cerrada por: <b>${escapeHtml(c.aprobada_por)}</b>${c.fecha_aprobacion ? ' el ' + escapeHtml(String(c.fecha_aprobacion)) : ''}</div>` : ''}
+      </div>
+      <span class="cap-status ${c.estado}">${c.estado}</span>
+    </div>
+  `;
+
+  // Mostrar legenda y header de lista solo si hay empleados o se permite agregar
+  document.getElementById('admin-section-header').style.display = 'flex';
+  document.getElementById('admin-legenda').style.display = editable ? 'flex' : 'flex';
+  document.getElementById('admin-btn-agregar').style.display = editable ? '' : 'none';
+
+  // Lista de empleados (reutilizo renderEmpleadoCap apuntando temporalmente datosCaptura)
+  const cont = document.getElementById('admin-lista-emp');
+  if (adminDatosCaptura.empleados.length === 0) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">👷</div>
+        <div class="empty-state-title">Sin empleados todavía</div>
+        <div class="empty-state-msg">${editable ? 'Click en "+ Agregar" para registrar un empleado en la nómina administrativa.' : 'Esta captura no tiene empleados registrados.'}</div>
+      </div>`;
+  } else {
+    const datosBackup = datosCaptura;
+    const capActualBackup = capturaActual;
+    datosCaptura = adminDatosCaptura;
+    capturaActual = c.id;
+    cont.innerHTML = adminDatosCaptura.empleados.map(emp => renderEmpleadoCap(emp, editable)).join('');
+    datosCaptura = datosBackup;
+    capturaActual = capActualBackup;
+  }
+  document.getElementById('admin-count-emp').textContent =
+    adminDatosCaptura.empleados.length + ' empleado' + (adminDatosCaptura.empleados.length === 1 ? '' : 's');
+
+  // FAB con acciones según estado
+  const fab = document.getElementById('admin-fab');
+  if (c.estado === 'BORRADOR') {
+    fab.innerHTML = `<button class="btn btn-block" onclick="abrirCerrarAdmin()">Cerrar nómina administrativa</button>`;
+  } else if (c.estado === 'CERRADA') {
+    fab.innerHTML = `<button class="btn btn-secondary btn-block" onclick="abrirReabrirAdmin()">Reabrir captura</button>`;
+  } else {
+    fab.innerHTML = '';
+  }
+}
+
+// ─── Wrapper de operaciones del admin ────────────────────────────────────────
+// Todos los handlers de captura (toggleDia, agregar empleado, extras, viáticos)
+// dependen de las variables globales `datosCaptura` y `capturaActual`. Para que
+// la administrativa los reuse, preparamos el contexto antes de cada operación
+// y refrescamos al terminar.
+
+/** Configura el contexto para que las funciones existentes operen sobre la admin. */
+function activarContextoAdmin() {
+  datosCaptura = adminDatosCaptura;
+  capturaActual = adminDatosCaptura?.captura?.id || null;
+}
+
+/** Recarga la captura admin desde el backend y rerenderiza. */
+async function recargarAdmin() {
+  try {
+    const r = await callBackend('obtenerCapturaAdmin', {});
+    adminDatosCaptura = r;
+    renderAdminDetalle();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+// ─── Agregar empleado (admin) ────────────────────────────────────────────────
+function abrirAgregarEmpAdmin() {
+  // Reutiliza el mismo modal que el supervisor pero apuntando a la admin
+  activarContextoAdmin();
+  abrirAgregarEmp();
+}
+
+// ─── Cerrar / reabrir admin ──────────────────────────────────────────────────
+function abrirCerrarAdmin() {
+  document.getElementById('btn-confirmar-cerrar-admin').disabled = false;
+  document.getElementById('btn-confirmar-cerrar-admin').textContent = 'Cerrar nómina';
+  document.getElementById('modal-cerrar-admin').classList.add('show');
+}
+function cerrarCerrarAdmin() { document.getElementById('modal-cerrar-admin').classList.remove('show'); }
+
+async function confirmarCerrarAdmin() {
+  const btn = document.getElementById('btn-confirmar-cerrar-admin');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Cerrando…';
+  try {
+    await callBackend('cerrarCapturaAdmin', { captura_id: adminDatosCaptura.captura.id });
+    cerrarCerrarAdmin();
+    toast('Nómina administrativa cerrada', 'success');
+    await recargarAdmin();
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Cerrar nómina'; }
+}
+
+function abrirReabrirAdmin() {
+  document.getElementById('reab-admin-motivo').value = '';
+  document.getElementById('btn-confirmar-reabrir-admin').disabled = false;
+  document.getElementById('btn-confirmar-reabrir-admin').textContent = 'Reabrir';
+  document.getElementById('modal-reabrir-admin').classList.add('show');
+  setTimeout(() => document.getElementById('reab-admin-motivo').focus(), 150);
+}
+function cerrarReabrirAdmin() { document.getElementById('modal-reabrir-admin').classList.remove('show'); }
+
+async function confirmarReabrirAdmin() {
+  const btn = document.getElementById('btn-confirmar-reabrir-admin');
+  if (btn.disabled) return;
+  const motivo = document.getElementById('reab-admin-motivo').value.trim();
+  btn.disabled = true; btn.textContent = 'Reabriendo…';
+  try {
+    await callBackend('reabrirCapturaAdmin', { captura_id: adminDatosCaptura.captura.id, motivo });
+    cerrarReabrirAdmin();
+    toast('Captura reabierta', 'success');
+    await recargarAdmin();
   } catch(err) { toast(err.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
 }
