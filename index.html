@@ -194,6 +194,27 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .ac-name{font-size:12px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .ac-meta{font-size:10px;color:var(--muted);margin-top:2px;}
 .ac-empty{padding:14px;text-align:center;font-size:11px;color:var(--muted);}
+
+/* ── APROBACIÓN: resumen de quincena ── */
+.aprob-resumen{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;}
+.aprob-resumen-card{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px;text-align:center;}
+.aprob-resumen-num{font-size:20px;font-weight:700;line-height:1;}
+.aprob-resumen-lbl{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-top:4px;}
+.aprob-resumen-card.ENVIADA   .aprob-resumen-num{color:var(--info);}
+.aprob-resumen-card.APROBADA  .aprob-resumen-num{color:var(--ok);}
+.aprob-resumen-card.RECHAZADA .aprob-resumen-num{color:var(--err);}
+.aprob-resumen-card.BORRADOR  .aprob-resumen-num{color:var(--muted);}
+
+/* Banner de conflictos */
+.conflict-banner{background:var(--err-bg);border:0.5px solid var(--err);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:var(--err);}
+.conflict-banner-title{font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:6px;}
+.conflict-banner-item{margin-bottom:4px;line-height:1.4;}
+.conflict-banner-item:last-child{margin-bottom:0;}
+.conflict-banner-item b{font-weight:700;}
+
+/* Detalle de captura en aprobación: header con info de supervisor */
+.aprob-cap-supervisor{font-size:11px;color:var(--muted);margin-top:4px;}
+.aprob-cap-supervisor b{color:var(--text);font-weight:700;}
 </style>
 </head>
 <body>
@@ -276,6 +297,51 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
   <div id="lista-emp-cap"></div>
   <div class="fab-bar" id="fab-bar-cap"></div>
+</div>
+
+<!-- ═══ PANEL APROBACIÓN — LISTA ═══ -->
+<div id="panel-aprob" class="container" style="display:none">
+  <div class="cap-toolbar">
+    <div class="cap-toolbar-row">
+      <span class="cap-info">Quincena: <b id="aprob-quin-id">—</b></span>
+      <button class="btn btn-secondary btn-sm" onclick="initAprob()">↻ Recargar</button>
+    </div>
+    <div class="cap-toolbar-row">
+      <span class="cap-info" id="aprob-quin-fechas">—</span>
+    </div>
+  </div>
+
+  <div id="aprob-conflictos"></div>
+
+  <div class="aprob-resumen">
+    <div class="aprob-resumen-card ENVIADA"><div class="aprob-resumen-num" id="rs-enviada">0</div><div class="aprob-resumen-lbl">Enviadas</div></div>
+    <div class="aprob-resumen-card APROBADA"><div class="aprob-resumen-num" id="rs-aprobada">0</div><div class="aprob-resumen-lbl">Aprobadas</div></div>
+    <div class="aprob-resumen-card BORRADOR"><div class="aprob-resumen-num" id="rs-borrador">0</div><div class="aprob-resumen-lbl">Borrador</div></div>
+    <div class="aprob-resumen-card RECHAZADA"><div class="aprob-resumen-num" id="rs-rechazada">0</div><div class="aprob-resumen-lbl">Rechazadas</div></div>
+  </div>
+
+  <div class="section-header">
+    <span id="aprob-count">—</span>
+  </div>
+  <div id="aprob-lista"></div>
+</div>
+
+<!-- ═══ PANEL APROBACIÓN — DETALLE DE CAPTURA ═══ -->
+<div id="panel-aprob-cap" class="container" style="display:none">
+  <div class="cap-toolbar" id="aprob-cap-header"></div>
+  <div class="legenda">
+    <span class="legenda-titulo">Marcas:</span>
+    <span class="legenda-item"><span class="legenda-chip X">·</span> Vacío</span>
+    <span class="legenda-item"><span class="legenda-chip T">T</span> Trabajó</span>
+    <span class="legenda-item"><span class="legenda-chip D">D</span> Descanso</span>
+    <span class="legenda-item"><span class="legenda-chip F">F</span> Falta</span>
+    <span class="legenda-item"><span class="legenda-chip B">B</span> Baja</span>
+  </div>
+  <div class="section-header">
+    <span id="aprob-cap-count-emp">Empleados</span>
+  </div>
+  <div id="aprob-cap-lista-emp"></div>
+  <div class="fab-bar" id="aprob-cap-fab"></div>
 </div>
 
 <!-- ═══ MODAL: form de empleado (RH) ═══ -->
@@ -476,6 +542,48 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
 </div>
 
+<!-- ═══ MODAL: rechazar captura ═══ -->
+<div class="modal-bg" id="modal-rechazar">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Rechazar captura</div>
+      <button class="modal-close" onclick="cerrarRechazar()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Motivo del rechazo *</label>
+        <textarea class="field-input" id="rech-comentario" rows="4" placeholder="Explica al supervisor qué corregir..." style="resize:vertical;font-family:inherit;"></textarea>
+        <div class="field-help">El supervisor verá este comentario al entrar a su captura.</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarRechazar()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-rechazo" onclick="confirmarRechazo()">Rechazar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: reabrir captura aprobada ═══ -->
+<div class="modal-bg" id="modal-reabrir">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Reabrir captura aprobada</div>
+      <button class="modal-close" onclick="cerrarReabrir()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-help" style="margin-bottom:10px;">La captura volverá a BORRADOR. El supervisor podrá editarla y reenviarla. Esta acción queda registrada en el log.</div>
+      <div class="field">
+        <label class="field-label">Motivo (opcional)</label>
+        <input class="field-input" id="reab-motivo" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarReabrir()">Cancelar</button>
+      <button class="btn" id="btn-confirmar-reabrir" onclick="confirmarReabrir()">Reabrir</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -485,8 +593,8 @@ const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
 
 // ═══ ESTADO ═══════════════════════════════════════════════════════════════════
 let session = null;
-let tieneRH = false, tieneSup = false;
-let vista = 'rh'; // 'rh' | 'sup' | 'cap-detail'
+let tieneRH = false, tieneSup = false, tieneAprob = false;
+let vista = 'rh'; // 'rh' | 'sup' | 'cap-detail' | 'aprob' | 'aprob-cap'
 
 // RH
 let empleados = [];
@@ -502,6 +610,13 @@ let datosCaptura = null;           // {captura, quincena, empleados, dias, extra
 let extraCtx = null;               // {empleado_id, extra_id?}
 let viaticoCtx = null;             // {empleado_id, viatico_id?}
 
+// Aprobación (Fase 3a)
+let aprobQuincena = null;          // quincena cargada en panel-aprob
+let aprobCapturas = [];            // todas las capturas de la quincena
+let aprobConflictos = [];          // conflictos detectados
+let aprobCapturaActual = null;     // captura abierta en panel-aprob-cap
+let aprobDatosCaptura = null;      // payload de la captura abierta
+
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
 
@@ -515,22 +630,33 @@ function init() {
   document.getElementById('topbar-role').textContent = session.rol    || '—';
 
   const apps = session.apps || [];
-  tieneRH  = apps.indexOf('nomina-rh') >= 0;
-  tieneSup = apps.indexOf('nomina-supervisor') >= 0;
+  tieneRH    = apps.indexOf('nomina-rh') >= 0;
+  tieneSup   = apps.indexOf('nomina-supervisor') >= 0;
+  tieneAprob = apps.indexOf('nomina-aprobar') >= 0;
 
-  if (!tieneRH && !tieneSup) {
+  if (!tieneRH && !tieneSup && !tieneAprob) {
     document.getElementById('no-access').style.display = 'block';
     return;
   }
 
   buildTabs();
-  if (tieneSup) cambiarVista('sup');
-  else          cambiarVista('rh');
+  // Vista inicial: aprobación si la tiene (es lo más importante para el aprobador),
+  // si no supervisor, si no RH
+  if (tieneAprob)      cambiarVista('aprob');
+  else if (tieneSup)   cambiarVista('sup');
+  else                 cambiarVista('rh');
 }
 
 function buildTabs() {
   const tabs = document.getElementById('tabs');
   tabs.innerHTML = '';
+  if (tieneAprob) {
+    const t = document.createElement('button');
+    t.className = 'tab'; t.dataset.tab = 'aprob';
+    t.textContent = 'Aprobar';
+    t.onclick = () => cambiarVista('aprob');
+    tabs.appendChild(t);
+  }
   if (tieneSup) {
     const t = document.createElement('button');
     t.className = 'tab'; t.dataset.tab = 'sup';
@@ -549,24 +675,35 @@ function buildTabs() {
 
 function cambiarVista(v) {
   vista = v;
-  document.querySelectorAll('.tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.tab === v));
-  document.getElementById('panel-rh').style.display  = (v === 'rh')  ? 'block' : 'none';
-  document.getElementById('panel-sup').style.display = (v === 'sup') ? 'block' : 'none';
-  document.getElementById('panel-cap').style.display = (v === 'cap-detail') ? 'block' : 'none';
+  document.querySelectorAll('.tab').forEach(t => {
+    // La tab visible para vistas detalle es la padre (sup para cap-detail, aprob para aprob-cap)
+    const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap') ? 'aprob' : v;
+    t.classList.toggle('active', t.dataset.tab === tabActiva);
+  });
+  document.getElementById('panel-rh').style.display       = (v === 'rh')       ? 'block' : 'none';
+  document.getElementById('panel-sup').style.display      = (v === 'sup')      ? 'block' : 'none';
+  document.getElementById('panel-cap').style.display      = (v === 'cap-detail') ? 'block' : 'none';
+  document.getElementById('panel-aprob').style.display    = (v === 'aprob')    ? 'block' : 'none';
+  document.getElementById('panel-aprob-cap').style.display = (v === 'aprob-cap') ? 'block' : 'none';
 
   document.getElementById('topbar-subtitle').textContent =
-    v === 'rh' ? 'Nómina · Catálogo' :
-    v === 'sup' ? 'Nómina · Capturas' :
-    'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '');
+    v === 'rh'        ? 'Nómina · Catálogo' :
+    v === 'sup'       ? 'Nómina · Capturas' :
+    v === 'cap-detail' ? 'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '') :
+    v === 'aprob'     ? 'Nómina · Aprobación' :
+    v === 'aprob-cap' ? 'Nómina · Revisar ' + (aprobDatosCaptura?.captura?.proyecto || '') :
+    'Nómina';
 
-  if (v === 'rh' && empleados.length === 0)        cargarEmpleados();
-  if (v === 'sup')                                 initSupervisor();
-  if (v === 'cap-detail' && capturaActual)         cargarCaptura(capturaActual);
+  if (v === 'rh' && empleados.length === 0)              cargarEmpleados();
+  if (v === 'sup')                                       initSupervisor();
+  if (v === 'cap-detail' && capturaActual)               cargarCaptura(capturaActual);
+  if (v === 'aprob')                                     initAprob();
+  if (v === 'aprob-cap' && aprobCapturaActual)           cargarCapturaAprob(aprobCapturaActual);
 }
 
 function onBack() {
-  if (vista === 'cap-detail') { cambiarVista('sup'); return; }
+  if (vista === 'cap-detail')      { cambiarVista('sup'); return; }
+  if (vista === 'aprob-cap')       { cambiarVista('aprob'); return; }
   window.location.href = HUB_URL;
 }
 
@@ -1527,6 +1664,247 @@ async function volverBorrador() {
     toast('Captura en borrador', 'success');
     await cargarCaptura(capturaActual);
   } catch(err) { toast(err.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ FASE 3a: PANEL DE APROBACIÓN                                            ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function initAprob() {
+  const lista = document.getElementById('aprob-lista');
+  lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando capturas...</div>';
+  document.getElementById('aprob-count').textContent = 'Cargando...';
+  document.getElementById('aprob-conflictos').innerHTML = '';
+
+  try {
+    // Cargar lista en paralelo con conflictos
+    const [r, c] = await Promise.all([
+      callBackend('listarCapturasParaAprobar', {}),
+      callBackend('detectarConflictos', {})
+    ]);
+    aprobQuincena = r.quincena;
+    aprobCapturas = r.capturas || [];
+    aprobConflictos = c.conflictos || [];
+
+    // Header
+    document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
+    if (aprobQuincena.fecha_inicio) {
+      document.getElementById('aprob-quin-fechas').textContent =
+        `Del ${aprobQuincena.fecha_inicio} al ${aprobQuincena.fecha_fin} · Pago: ${aprobQuincena.fecha_pago}`;
+    } else {
+      document.getElementById('aprob-quin-fechas').textContent = '';
+    }
+
+    // Resumen
+    const res = r.resumen || {};
+    document.getElementById('rs-enviada').textContent   = res.ENVIADA   || 0;
+    document.getElementById('rs-aprobada').textContent  = res.APROBADA  || 0;
+    document.getElementById('rs-borrador').textContent  = res.BORRADOR  || 0;
+    document.getElementById('rs-rechazada').textContent = res.RECHAZADA || 0;
+
+    // Banner de conflictos
+    renderConflictosBanner();
+
+    // Lista
+    renderAprobLista();
+  } catch(err) {
+    lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderConflictosBanner() {
+  const cont = document.getElementById('aprob-conflictos');
+  if (!aprobConflictos || aprobConflictos.length === 0) {
+    cont.innerHTML = '';
+    return;
+  }
+  const items = aprobConflictos.slice(0, 5).map(cf => {
+    const partes = cf.marcas.map(m =>
+      `<b>${escapeHtml(m.proyecto)}</b> (${escapeHtml(m.supervisor)}): ${m.marca}`
+    ).join(' vs ');
+    const fecha = fechaDeQuincena(aprobQuincena, cf.dia_offset);
+    return `<div class="conflict-banner-item">${escapeHtml(cf.empleado_nombre)} · ${fecha} → ${partes}</div>`;
+  }).join('');
+  const extra = aprobConflictos.length > 5 ? `<div class="conflict-banner-item" style="opacity:.7;margin-top:4px">… y ${aprobConflictos.length - 5} más</div>` : '';
+  cont.innerHTML = `
+    <div class="conflict-banner">
+      <div class="conflict-banner-title">⚠️ ${aprobConflictos.length} conflicto${aprobConflictos.length === 1 ? '' : 's'} detectado${aprobConflictos.length === 1 ? '' : 's'}</div>
+      ${items}${extra}
+    </div>
+  `;
+}
+
+function fechaDeQuincena(q, offset) {
+  if (!q || !q.fecha_inicio) return String(offset + 1);
+  const partes = String(q.fecha_inicio).split('-');
+  const d = new Date(+partes[0], +partes[1]-1, +partes[2]);
+  d.setDate(d.getDate() + offset);
+  return (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + (d.getMonth()+1 < 10 ? '0' : '') + (d.getMonth()+1);
+}
+
+function renderAprobLista() {
+  const lista = document.getElementById('aprob-lista');
+  document.getElementById('aprob-count').textContent =
+    aprobCapturas.length + (aprobCapturas.length === 1 ? ' captura' : ' capturas');
+
+  if (aprobCapturas.length === 0) {
+    lista.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-title">No hay capturas en esta quincena</div>
+        <div class="empty-state-msg">Cuando los supervisores envíen sus capturas aparecerán aquí.</div>
+      </div>`;
+    return;
+  }
+
+  lista.innerHTML = aprobCapturas.map(c => {
+    const total = parseFloat(c.total || 0);
+    const numEmp = c.num_empleados || 0;
+    const diasT = c.dias_t || 0;
+    return `
+      <div class="cap-card" onclick="abrirCapturaAprob(${c.id})">
+        <div class="cap-head">
+          <div>
+            <div class="cap-proj">${escapeHtml(c.proyecto)}</div>
+            <div class="cap-quin">Supervisor: ${escapeHtml(c.supervisor)}</div>
+          </div>
+          <span class="cap-status ${c.estado}">${c.estado}</span>
+        </div>
+        <div class="cap-meta">${numEmp} empleado${numEmp === 1 ? '' : 's'} · ${diasT} día${diasT === 1 ? '' : 's'} T · $${total.toFixed(2)}${c.comentario_rechazo ? ' · ⚠️ ' + escapeHtml(c.comentario_rechazo) : ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function abrirCapturaAprob(id) {
+  aprobCapturaActual = id;
+  cambiarVista('aprob-cap');
+}
+
+async function cargarCapturaAprob(id) {
+  const cont = document.getElementById('aprob-cap-lista-emp');
+  cont.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando...</div>';
+  try {
+    const r = await callBackend('obtenerCapturaParaAprobar', { captura_id: id });
+    aprobDatosCaptura = r;
+    renderCapturaAprobDetalle();
+  } catch(err) {
+    cont.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderCapturaAprobDetalle() {
+  const c = aprobDatosCaptura.captura;
+  const q = aprobDatosCaptura.quincena;
+  document.getElementById('topbar-subtitle').textContent = 'Nómina · Revisar ' + c.proyecto;
+
+  // Header con info de supervisor + estado
+  const hdr = document.getElementById('aprob-cap-header');
+  hdr.innerHTML = `
+    <div class="cap-toolbar-row">
+      <div>
+        <div class="cap-proj">${escapeHtml(c.proyecto)}</div>
+        <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
+        <div class="aprob-cap-supervisor">Supervisor: <b>${escapeHtml(c.supervisor)}</b>${c.fecha_envio ? ' · Enviada el ' + escapeHtml(String(c.fecha_envio)) : ''}</div>
+        ${c.aprobada_por ? `<div class="aprob-cap-supervisor">Aprobada por: <b>${escapeHtml(c.aprobada_por)}</b>${c.fecha_aprobacion ? ' el ' + escapeHtml(String(c.fecha_aprobacion)) : ''}</div>` : ''}
+      </div>
+      <span class="cap-status ${c.estado}">${c.estado}</span>
+    </div>
+    ${c.comentario_rechazo ? `<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">⚠️ ${escapeHtml(c.comentario_rechazo)}</div></div>` : ''}
+  `;
+
+  // Lista de empleados (modo lectura: editable=false)
+  const cont = document.getElementById('aprob-cap-lista-emp');
+  if (aprobDatosCaptura.empleados.length === 0) {
+    cont.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">👷</div>
+        <div class="empty-state-title">Sin empleados en esta captura</div>
+      </div>`;
+  } else {
+    // Reutilizo renderEmpleadoCap pero con datosCaptura apuntando a aprobDatosCaptura
+    // Truco: el render usa la variable global datosCaptura, así que la cambio temporalmente
+    const datosBackup = datosCaptura;
+    datosCaptura = aprobDatosCaptura;
+    cont.innerHTML = aprobDatosCaptura.empleados.map(emp => renderEmpleadoCap(emp, false)).join('');
+    datosCaptura = datosBackup;
+  }
+  document.getElementById('aprob-cap-count-emp').textContent = aprobDatosCaptura.empleados.length + ' empleado' + (aprobDatosCaptura.empleados.length === 1 ? '' : 's');
+
+  // FAB con acciones según estado
+  const fab = document.getElementById('aprob-cap-fab');
+  if (c.estado === 'ENVIADA') {
+    fab.innerHTML = `
+      <button class="btn btn-secondary" onclick="abrirRechazar()">Rechazar</button>
+      <button class="btn btn-success" onclick="aprobarCaptura()">Aprobar</button>
+    `;
+  } else if (c.estado === 'APROBADA') {
+    fab.innerHTML = `<button class="btn btn-secondary btn-block" onclick="abrirReabrir()">Reabrir captura</button>`;
+  } else {
+    // BORRADOR / RECHAZADA: solo lectura, sin acciones
+    fab.innerHTML = '';
+  }
+}
+
+async function aprobarCaptura() {
+  if (!aprobCapturaActual) return;
+  const c = aprobDatosCaptura.captura;
+  if (!confirm(`¿Aprobar la captura de ${c.proyecto} (${c.supervisor})?`)) return;
+
+  try {
+    await callBackend('aprobarCaptura', { captura_id: aprobCapturaActual });
+    toast('Captura aprobada', 'success');
+    cambiarVista('aprob');
+  } catch(err) { toast(err.message, 'error'); }
+}
+
+function abrirRechazar() {
+  document.getElementById('rech-comentario').value = '';
+  document.getElementById('btn-confirmar-rechazo').disabled = false;
+  document.getElementById('btn-confirmar-rechazo').textContent = 'Rechazar';
+  document.getElementById('modal-rechazar').classList.add('show');
+  setTimeout(() => document.getElementById('rech-comentario').focus(), 150);
+}
+function cerrarRechazar() { document.getElementById('modal-rechazar').classList.remove('show'); }
+
+async function confirmarRechazo() {
+  const btn = document.getElementById('btn-confirmar-rechazo');
+  if (btn.disabled) return;
+  const comentario = document.getElementById('rech-comentario').value.trim();
+  if (!comentario) { toast('El comentario es obligatorio', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Rechazando…';
+  try {
+    await callBackend('rechazarCaptura', { captura_id: aprobCapturaActual, comentario });
+    cerrarRechazar();
+    toast('Captura rechazada', 'success');
+    cambiarVista('aprob');
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Rechazar'; }
+}
+
+function abrirReabrir() {
+  document.getElementById('reab-motivo').value = '';
+  document.getElementById('btn-confirmar-reabrir').disabled = false;
+  document.getElementById('btn-confirmar-reabrir').textContent = 'Reabrir';
+  document.getElementById('modal-reabrir').classList.add('show');
+  setTimeout(() => document.getElementById('reab-motivo').focus(), 150);
+}
+function cerrarReabrir() { document.getElementById('modal-reabrir').classList.remove('show'); }
+
+async function confirmarReabrir() {
+  const btn = document.getElementById('btn-confirmar-reabrir');
+  if (btn.disabled) return;
+  const motivo = document.getElementById('reab-motivo').value.trim();
+  btn.disabled = true; btn.textContent = 'Reabriendo…';
+  try {
+    await callBackend('reabrirCaptura', { captura_id: aprobCapturaActual, motivo });
+    cerrarReabrir();
+    toast('Captura reabierta', 'success');
+    cambiarVista('aprob');
+  } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
 }
 
 // ═══ HELPERS ══════════════════════════════════════════════════════════════════
