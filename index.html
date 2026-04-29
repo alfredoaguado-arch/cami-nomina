@@ -447,7 +447,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="cerrarExtra()">Cancelar</button>
-      <button class="btn" onclick="guardarExtra()">Guardar</button>
+      <button class="btn" id="btn-guardar-extra" onclick="guardarExtra()">Guardar</button>
     </div>
   </div>
 </div>
@@ -471,7 +471,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="cerrarViatico()">Cancelar</button>
-      <button class="btn" onclick="guardarViatico()">Guardar</button>
+      <button class="btn" id="btn-guardar-viatico" onclick="guardarViatico()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1430,9 +1430,13 @@ function cerrarExtra() { document.getElementById('modal-extra').classList.remove
 
 async function guardarExtra() {
   if (!extraCtx) return;
+  const btn = document.getElementById('btn-guardar-extra');
+  // Anti-doble-tap (ghost click en Android): si ya está guardando, ignora
+  if (btn.disabled) return;
   const horas = parseFloat(document.getElementById('ex-horas').value || 0);
   const monto = parseFloat(document.getElementById('ex-monto').value || 0);
   if (horas <= 0 || monto < 0) { toast('Horas y monto deben ser válidos', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Guardando…';
   try {
     await callBackend('guardarExtra', {
       captura_id: capturaActual,
@@ -1445,6 +1449,7 @@ async function guardarExtra() {
     toast('Extra guardado', 'success');
     await cargarCaptura(capturaActual);
   } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
 }
 
 async function eliminarExtra(extraId) {
@@ -1476,9 +1481,13 @@ function cerrarViatico() { document.getElementById('modal-via').classList.remove
 
 async function guardarViatico() {
   if (!viaticoCtx) return;
+  const btn = document.getElementById('btn-guardar-viatico');
+  // Anti-doble-tap (ghost click en Android): si ya está guardando, ignora
+  if (btn.disabled) return;
   const concepto = document.getElementById('via-concepto').value.trim();
   const monto = parseFloat(document.getElementById('via-monto').value || 0);
   if (!concepto || monto <= 0) { toast('Falta concepto o monto', 'error'); return; }
+  btn.disabled = true; btn.textContent = 'Guardando…';
   try {
     await callBackend('guardarViatico', {
       captura_id: capturaActual,
@@ -1490,6 +1499,7 @@ async function guardarViatico() {
     toast('Viático guardado', 'success');
     await cargarCaptura(capturaActual);
   } catch(err) { toast(err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
 }
 
 async function eliminarViatico(viaticoId) {
