@@ -2067,6 +2067,10 @@ async function cargarCapturaAprob(id) {
 function renderCapturaAprobDetalle() {
   const c = aprobDatosCaptura.captura;
   const q = aprobDatosCaptura.quincena;
+
+  // v3.2-fix: activar contexto de aprobación desde el inicio.
+  datosCaptura = aprobDatosCaptura;
+
   document.getElementById('topbar-subtitle').textContent = 'Nómina · Revisar ' + c.proyecto;
 
   // Header con info de supervisor + estado
@@ -2093,12 +2097,7 @@ function renderCapturaAprobDetalle() {
         <div class="empty-state-title">Sin empleados en esta captura</div>
       </div>`;
   } else {
-    // Reutilizo renderEmpleadoCap pero con datosCaptura apuntando a aprobDatosCaptura
-    // Truco: el render usa la variable global datosCaptura, así que la cambio temporalmente
-    const datosBackup = datosCaptura;
-    datosCaptura = aprobDatosCaptura;
     cont.innerHTML = aprobDatosCaptura.empleados.map(emp => renderEmpleadoCap(emp, false)).join('');
-    datosCaptura = datosBackup;
   }
   document.getElementById('aprob-cap-count-emp').textContent = aprobDatosCaptura.empleados.length + ' empleado' + (aprobDatosCaptura.empleados.length === 1 ? '' : 's');
 
@@ -2217,6 +2216,11 @@ function renderAdminDetalle() {
   const q = adminDatosCaptura.quincena;
   const editable = c.estado === 'BORRADOR';
 
+  // v3.2-fix: activar contexto admin desde el inicio. Las funciones que se
+  // disparan después del render (abrirMenuDia, etc.) leen datosCaptura/capturaActual.
+  datosCaptura = adminDatosCaptura;
+  capturaActual = c.id;
+
   // Header
   const hdr = document.getElementById('admin-header');
   hdr.innerHTML = `
@@ -2245,13 +2249,7 @@ function renderAdminDetalle() {
         <div class="empty-state-msg">${editable ? 'Click en "+ Agregar" para registrar un empleado en la nómina administrativa.' : 'Esta captura no tiene empleados registrados.'}</div>
       </div>`;
   } else {
-    const datosBackup = datosCaptura;
-    const capActualBackup = capturaActual;
-    datosCaptura = adminDatosCaptura;
-    capturaActual = c.id;
     cont.innerHTML = adminDatosCaptura.empleados.map(emp => renderEmpleadoCap(emp, editable)).join('');
-    datosCaptura = datosBackup;
-    capturaActual = capActualBackup;
   }
   document.getElementById('admin-count-emp').textContent =
     adminDatosCaptura.empleados.length + ' empleado' + (adminDatosCaptura.empleados.length === 1 ? '' : 's');
