@@ -215,6 +215,31 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 /* Detalle de captura en aprobación: header con info de supervisor */
 .aprob-cap-supervisor{font-size:11px;color:var(--muted);margin-top:4px;}
 .aprob-cap-supervisor b{color:var(--text);font-weight:700;}
+
+/* ── ACTIONSHEET para selección de marca de día ── */
+.actionsheet-bg{position:fixed;inset:0;background:rgba(26,26,24,.5);display:none;align-items:flex-end;justify-content:center;z-index:80;animation:fadeIn .12s ease-out;}
+.actionsheet-bg.show{display:flex;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.actionsheet{background:var(--bg);width:100%;max-width:560px;border-radius:14px 14px 0 0;display:flex;flex-direction:column;animation:slideUpAS .15s ease-out;padding-bottom:env(safe-area-inset-bottom,0);}
+@keyframes slideUpAS{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.as-header{padding:14px 18px;border-bottom:0.5px solid var(--border);background:var(--card);border-radius:14px 14px 0 0;text-align:center;}
+.as-header-emp{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;}
+.as-header-fecha{font-size:14px;font-weight:700;margin-top:4px;}
+.as-options{background:var(--card);}
+.as-option{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:0.5px solid var(--border);cursor:pointer;font-family:inherit;font-size:14px;color:var(--text);background:none;border-left:none;border-right:none;border-top:none;width:100%;text-align:left;}
+.as-option:last-child{border-bottom:none;}
+.as-option:active{background:var(--light);}
+.as-option-check{width:20px;font-size:14px;font-weight:700;color:var(--ok);}
+.as-option-chip{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;}
+.as-option-chip.T{background:#3B6D11;}
+.as-option-chip.D{background:#888780;}
+.as-option-chip.F{background:#A32D2D;}
+.as-option-chip.B{background:#1A1A18;}
+.as-option-chip.X{background:var(--bg);color:var(--muted);border:0.5px solid var(--border);}
+.as-option-label{flex:1;font-size:14px;}
+.as-option-label b{font-weight:700;font-size:14px;}
+.as-cancel{margin-top:8px;padding:14px;background:var(--card);text-align:center;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text);cursor:pointer;border:none;border-radius:14px 14px 0 0;font-family:inherit;width:100%;border-top:4px solid var(--bg);}
+.as-cancel:active{background:var(--light);}
 </style>
 </head>
 <body>
@@ -284,7 +309,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div id="panel-cap" class="container" style="display:none">
   <div class="cap-toolbar" id="cap-detail-header"></div>
   <div class="legenda" id="legenda-marcas">
-    <span class="legenda-titulo">Toca un día para cambiar:</span>
+    <span class="legenda-titulo">Toca un día para asignar:</span>
     <span class="legenda-item"><span class="legenda-chip X">·</span> Vacío</span>
     <span class="legenda-item"><span class="legenda-chip T">T</span> Trabajó</span>
     <span class="legenda-item"><span class="legenda-chip D">D</span> Descanso</span>
@@ -348,7 +373,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div id="panel-admin" class="container" style="display:none">
   <div class="cap-toolbar" id="admin-header"></div>
   <div class="legenda" id="admin-legenda" style="display:none">
-    <span class="legenda-titulo">Toca un día para cambiar:</span>
+    <span class="legenda-titulo">Toca un día para asignar:</span>
     <span class="legenda-item"><span class="legenda-chip X">·</span> Vacío</span>
     <span class="legenda-item"><span class="legenda-chip T">T</span> Trabajó</span>
     <span class="legenda-item"><span class="legenda-chip D">D</span> Descanso</span>
@@ -638,6 +663,20 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
       <button class="btn btn-secondary" onclick="cerrarReabrirAdmin()">Cancelar</button>
       <button class="btn" id="btn-confirmar-reabrir-admin" onclick="confirmarReabrirAdmin()">Reabrir</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ ACTIONSHEET: selección de marca para un día ═══ -->
+<div class="actionsheet-bg" id="actionsheet-marca" onclick="cerrarMenuDiaSiFuera(event)">
+  <div class="actionsheet" onclick="event.stopPropagation()">
+    <div class="as-header">
+      <div class="as-header-emp" id="as-emp">—</div>
+      <div class="as-header-fecha" id="as-fecha">—</div>
+    </div>
+    <div class="as-options" id="as-options">
+      <!-- generado dinámicamente -->
+    </div>
+    <button class="as-cancel" onclick="cerrarMenuDia()">Cancelar</button>
   </div>
 </div>
 
@@ -1207,7 +1246,7 @@ function renderEmpleadoCap(emp, editable) {
     const d = dias.find(x => parseInt(x.dia_offset,10) === i);
     const marca = d ? String(d.marca || '').toUpperCase() : '';
     const fecha = fechaDeOffset(i);
-    const onclickAttr = editable ? `onclick="toggleDia(${emp.id}, ${i})"` : '';
+    const onclickAttr = editable ? `onclick="abrirMenuDia(${emp.id}, ${i})"` : '';
     cal += `<button class="dia-btn ${marca}" ${onclickAttr}><span class="dia-num">${fecha}</span><span class="dia-mark">${marca || '·'}</span></button>`;
   }
 
@@ -1443,9 +1482,29 @@ async function confirmarAgregarEmp() {
   }
 }
 
+// Set de empleados en proceso de eliminación (anti doble-tap en Android)
+const _quitandoEmpleados = new Set();
+
 async function quitarEmpleadoCap(empleadoId) {
+  // v3.2: anti-doble-tap. Si ya estamos quitando este empleado, ignora.
+  const key = String(empleadoId);
+  if (_quitandoEmpleados.has(key)) return;
+
   const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
-  if (!emp || !confirm('¿Quitar a ' + emp.nombre + ' de esta captura? Se borran sus días, extras y viáticos.')) return;
+  if (!emp) return;
+
+  // Marcar como "en proceso" ANTES del confirm para que el ghost click no abra dos confirms
+  _quitandoEmpleados.add(key);
+
+  let confirmado = false;
+  try {
+    confirmado = confirm('¿Quitar a ' + emp.nombre + ' de esta captura? Se borran sus días, extras y viáticos.');
+  } catch(e) {}
+
+  if (!confirmado) {
+    _quitandoEmpleados.delete(key);
+    return;
+  }
 
   // 1. UPDATE OPTIMISTA
   const empBackup = { ...emp };
@@ -1481,6 +1540,8 @@ async function quitarEmpleadoCap(empleadoId) {
     datosCaptura.viaticos.push(...viaticosBackup);
     rerenderListaEmpleados();
     toast('Error de red', 'error');
+  } finally {
+    _quitandoEmpleados.delete(key);
   }
 }
 
@@ -1517,23 +1578,110 @@ function rerenderListaEmpleados() {
 }
 
 // ─── Marcar día (TAP CÍCLICO: vacío → T → D → F → B → vacío) ─────────────────
-const CICLO_MARCAS = ['', 'T', 'D', 'F', 'B'];
+// ─── v3.2: Menú de selección de marca (actionsheet) ─────────────────────────
+// Reemplaza el tap cíclico con un menú explícito. Soluciona ghost click en Android.
 
-async function toggleDia(empleadoId, diaOffset) {
+const MARCAS_INFO = [
+  { codigo: 'T', label: 'Trabajó' },
+  { codigo: 'D', label: 'Descanso' },
+  { codigo: 'F', label: 'Falta' },
+  { codigo: 'B', label: 'Baja' },
+  { codigo: '', label: 'Vacío' }
+];
+
+// Contexto del menú abierto (para que seleccionarMarca sepa a qué empleado/día aplica)
+let menuDiaCtx = null; // { empleadoId, diaOffset }
+
+function abrirMenuDia(empleadoId, diaOffset) {
   const c = datosCaptura?.captura;
   if (!c) return;
-  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  // Validar que sea editable (defensivo: el onclick ya solo se renderiza si editable)
+  const esAdmin = vista === 'admin';
+  const editable = esAdmin
+    ? c.estado === 'BORRADOR'
+    : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
   if (!editable) return;
 
-  // Marca actual
+  // Si ya hay menú abierto, ignorar (un actionsheet a la vez)
+  if (menuDiaCtx) return;
+
+  // Calcular marca actual del día
+  const d = (datosCaptura.dias || []).find(x =>
+    String(x.empleado_id) === String(empleadoId) &&
+    parseInt(x.dia_offset, 10) === diaOffset
+  );
+  const marcaActual = d ? String(d.marca || '').toUpperCase() : '';
+
+  // Buscar nombre del empleado para el header
+  const emp = (datosCaptura.empleados || []).find(e => String(e.id) === String(empleadoId));
+  const nombreCorto = emp ? emp.nombre.split(' ').slice(0, 2).join(' ') : 'Empleado';
+  document.getElementById('as-emp').textContent = nombreCorto;
+  document.getElementById('as-fecha').textContent = fechaDeOffsetCompleta(diaOffset);
+
+  // Generar opciones
+  const opts = MARCAS_INFO.map(m => {
+    const seleccionada = m.codigo === marcaActual;
+    const chipClass = m.codigo === '' ? 'X' : m.codigo;
+    const chipTxt   = m.codigo === '' ? '·' : m.codigo;
+    return `
+      <button class="as-option" onclick="seleccionarMarca('${m.codigo}')">
+        <span class="as-option-check">${seleccionada ? '✓' : ''}</span>
+        <span class="as-option-chip ${chipClass}">${chipTxt}</span>
+        <span class="as-option-label"><b>${m.codigo || '·'}</b> ${m.label}</span>
+      </button>
+    `;
+  }).join('');
+  document.getElementById('as-options').innerHTML = opts;
+
+  menuDiaCtx = { empleadoId, diaOffset };
+  document.getElementById('actionsheet-marca').classList.add('show');
+}
+
+function cerrarMenuDia() {
+  document.getElementById('actionsheet-marca').classList.remove('show');
+  menuDiaCtx = null;
+}
+
+function cerrarMenuDiaSiFuera(e) {
+  // Click en el background (fuera del actionsheet) cierra
+  if (e.target.id === 'actionsheet-marca') cerrarMenuDia();
+}
+
+function fechaDeOffsetCompleta(i) {
+  const q = (vista === 'admin' ? adminDatosCaptura : datosCaptura)?.quincena;
+  if (!q?.fecha_inicio) return String(i + 1);
+  const partes = String(q.fecha_inicio).split('-');
+  const d = new Date(+partes[0], +partes[1]-1, +partes[2]);
+  d.setDate(d.getDate() + i);
+  const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  return dias[d.getDay()] + ' ' + (d.getDate() < 10 ? '0' : '') + d.getDate() + '/' + (d.getMonth()+1 < 10 ? '0' : '') + (d.getMonth()+1);
+}
+
+async function seleccionarMarca(marca) {
+  if (!menuDiaCtx) return;
+  const { empleadoId, diaOffset } = menuDiaCtx;
+  cerrarMenuDia();
+  // Llamar al handler real con la marca explícita (sin ciclo)
+  await marcarDiaInterno(empleadoId, diaOffset, String(marca || '').toUpperCase());
+}
+
+async function marcarDiaInterno(empleadoId, diaOffset, marca) {
+  const c = datosCaptura?.captura;
+  if (!c) return;
+  const esAdmin = vista === 'admin';
+  const editable = esAdmin
+    ? c.estado === 'BORRADOR'
+    : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  if (!editable) return;
+
+  // Si la marca elegida es la misma que ya estaba, no hacemos nada
   const dias = datosCaptura.dias;
   const ix = dias.findIndex(d =>
     String(d.empleado_id) === String(empleadoId) &&
     parseInt(d.dia_offset, 10) === diaOffset
   );
   const marcaActual = ix >= 0 ? String(dias[ix].marca || '').toUpperCase() : '';
-  const cicloIx = CICLO_MARCAS.indexOf(marcaActual);
-  const marca = CICLO_MARCAS[(cicloIx + 1) % CICLO_MARCAS.length];
+  if (marca === marcaActual) return;
 
   const previo = ix >= 0 ? { ...dias[ix] } : null;
 
@@ -1591,6 +1739,7 @@ async function toggleDia(empleadoId, diaOffset) {
     toast('Error de red', 'error');
   }
 }
+
 
 // Versión silenciosa: no lanza, devuelve {ok, error?}
 async function callBackendSilent(action, payload, _retryCount) {
