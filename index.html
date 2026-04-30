@@ -745,6 +745,13 @@ function init() {
   else if (tieneAprob) cambiarVista('aprob');
   else if (tieneSup)   cambiarVista('sup');
   else                 cambiarVista('rh');
+
+  // v3.2-fix: ESC global cierra actionsheet (escape de seguridad si quedó pegado)
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+      try { cerrarMenuDia(); } catch(err) {}
+    }
+  });
 }
 
 function buildTabs() {
@@ -781,6 +788,11 @@ function buildTabs() {
 }
 
 function cambiarVista(v) {
+  // v3.2-fix: cerrar actionsheet si quedó abierto al cambiar de vista
+  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+    try { cerrarMenuDia(); } catch(e) {}
+  }
+
   vista = v;
   document.querySelectorAll('.tab').forEach(t => {
     // La tab visible para vistas detalle es la padre (sup para cap-detail, aprob para aprob-cap)
@@ -1169,6 +1181,11 @@ function abrirCaptura(id) {
 }
 
 async function cargarCaptura(id) {
+  // v3.2-fix: cerrar actionsheet si quedó abierto
+  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+    try { cerrarMenuDia(); } catch(e) {}
+  }
+
   const esAdmin = vista === 'admin';
   if (esAdmin) {
     // Para la administrativa, recargamos con obtenerCapturaAdmin
@@ -1602,7 +1619,15 @@ function abrirMenuDia(empleadoId, diaOffset) {
     : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
   if (!editable) return;
 
-  // Si ya hay menú abierto, ignorar (un actionsheet a la vez)
+  // v3.2-fix: auto-recuperación. Si menuDiaCtx quedó pegado pero el actionsheet
+  // no está visualmente abierto, limpiar y continuar.
+  const sheetVisible = document.getElementById('actionsheet-marca').classList.contains('show');
+  if (menuDiaCtx && !sheetVisible) {
+    console.warn('menuDiaCtx pegado, limpiando');
+    menuDiaCtx = null;
+  }
+
+  // Si ya hay menú abierto (visualmente), ignorar (un actionsheet a la vez)
   if (menuDiaCtx) return;
 
   // Calcular marca actual del día
@@ -2023,6 +2048,10 @@ function abrirCapturaAprob(id) {
 }
 
 async function cargarCapturaAprob(id) {
+  // v3.2-fix: cerrar actionsheet si quedó abierto
+  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+    try { cerrarMenuDia(); } catch(e) {}
+  }
   const cont = document.getElementById('aprob-cap-lista-emp');
   cont.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando...</div>';
   try {
@@ -2252,6 +2281,10 @@ function activarContextoAdmin() {
 
 /** Recarga la captura admin desde el backend y rerenderiza. */
 async function recargarAdmin() {
+  // v3.2-fix: cerrar actionsheet si quedó abierto
+  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+    try { cerrarMenuDia(); } catch(e) {}
+  }
   try {
     const r = await callBackend('obtenerCapturaAdmin', {});
     adminDatosCaptura = r;
