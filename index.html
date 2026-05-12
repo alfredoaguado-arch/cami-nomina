@@ -120,6 +120,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .cap-status.ENVIADA   {background:var(--info-bg);color:var(--info);}
 .cap-status.RECHAZADA {background:var(--err-bg);color:var(--err);}
 .cap-status.APROBADA  {background:var(--ok-bg);color:var(--ok);}
+.cap-status.CERRADA   {background:var(--ok-bg);color:var(--ok);}
 .cap-meta{font-size:11px;color:var(--muted);}
 
 /* ── CAPTURA DETAIL: empleados ── */
@@ -128,6 +129,11 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .cap-toolbar-row:last-child{margin-bottom:0;}
 .cap-info{font-size:11px;color:var(--muted);}
 .cap-info b{color:var(--text);font-weight:700;}
+
+/* v3.3: selector de quincena + mensaje sutil */
+.quincena-select{flex:1;background:var(--bg);border:0.5px solid var(--border);border-radius:6px;padding:6px 10px;font-family:inherit;font-size:12px;font-weight:700;color:var(--text);outline:none;cursor:pointer;}
+.quincena-select:focus{border-color:var(--dark);}
+.quincena-aviso{font-size:10px;color:var(--muted);font-style:italic;line-height:1.5;margin-top:6px;padding-top:6px;border-top:0.5px dashed var(--border);}
 
 .empleado-cap{background:var(--card);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
 .empleado-cap-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
@@ -162,7 +168,6 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .fab-bar{position:sticky;bottom:0;background:linear-gradient(180deg,transparent 0%,var(--bg) 30%);padding:14px 0 6px;margin:0 -16px;display:flex;gap:8px;justify-content:center;}
 .fab-bar > *{flex:1;max-width:240px;}
 
-/* ── DAY MENU MODAL ── */
 /* ── DAY BUTTON FEEDBACK ── */
 .dia-btn{transition:transform .08s, background-color .08s;}
 .dia-btn:active{transform:scale(.92);}
@@ -289,18 +294,12 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 
 <!-- ═══ PANEL SUPERVISOR — LISTA ═══ -->
 <div id="panel-sup" class="container" style="display:none">
-  <div class="cap-toolbar">
-    <div class="cap-toolbar-row">
-      <span class="cap-info">Quincena vigente: <b id="quin-vigente">—</b></span>
-      <button class="btn btn-sm" onclick="abrirNuevaCap()">+ Nueva</button>
-    </div>
-    <div class="cap-toolbar-row">
-      <span class="cap-info" id="quin-fechas">—</span>
-    </div>
+  <div class="cap-toolbar" id="sup-toolbar">
+    <!-- Renderizado dinámicamente según haya 1 o múltiples quincenas capturables -->
   </div>
   <div class="section-header">
     <span id="count-cap">Mis capturas</span>
-    <button class="btn btn-secondary btn-sm" onclick="cargarCapturas()">↻ Recargar</button>
+    <button class="btn btn-secondary btn-sm" onclick="recargarSupervisor()">↻ Recargar</button>
   </div>
   <div id="lista-cap"></div>
 </div>
@@ -699,22 +698,25 @@ let editandoEmpId = null;
 
 // Supervisor
 let proyectosAsignados = [];
-let quincenaVigente = null;
+let quincenaVigente = null;          // Quincena seleccionada actualmente (cambia con el selector)
+let quincenasCapturablesSup = [];    // v3.3: lista de quincenas capturables para supervisor
 let capturas = [];
-let capturaActual = null;          // captura abierta en panel-cap
-let datosCaptura = null;           // {captura, quincena, empleados, dias, extras, viaticos}
-let extraCtx = null;               // {empleado_id, extra_id?}
-let viaticoCtx = null;             // {empleado_id, viatico_id?}
+let capturaActual = null;
+let datosCaptura = null;
+let extraCtx = null;
+let viaticoCtx = null;
 
 // Aprobación (Fase 3a)
-let aprobQuincena = null;          // quincena cargada en panel-aprob
-let aprobCapturas = [];            // todas las capturas de la quincena
-let aprobConflictos = [];          // conflictos detectados
-let aprobCapturaActual = null;     // captura abierta en panel-aprob-cap
-let aprobDatosCaptura = null;      // payload de la captura abierta
+let aprobQuincena = null;
+let aprobCapturas = [];
+let aprobConflictos = [];
+let aprobCapturaActual = null;
+let aprobDatosCaptura = null;
 
 // Administrativa (Fase 3c)
-let adminDatosCaptura = null;      // payload de la captura administrativa
+let adminDatosCaptura = null;
+let quincenasCapturablesAdmin = [];  // v3.3: lista para Mariana
+let adminQuincenaSeleccionada = null; // v3.3
 
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
@@ -740,13 +742,11 @@ function init() {
   }
 
   buildTabs();
-  // Vista inicial: administrativa (si la tiene), si no aprobación, si no supervisor, si no RH
   if (tieneFin)        cambiarVista('admin');
   else if (tieneAprob) cambiarVista('aprob');
   else if (tieneSup)   cambiarVista('sup');
   else                 cambiarVista('rh');
 
-  // v3.2-fix: ESC global cierra actionsheet (escape de seguridad si quedó pegado)
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
       try { cerrarMenuDia(); } catch(err) {}
@@ -788,14 +788,12 @@ function buildTabs() {
 }
 
 function cambiarVista(v) {
-  // v3.2-fix: cerrar actionsheet si quedó abierto al cambiar de vista
   if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
     try { cerrarMenuDia(); } catch(e) {}
   }
 
   vista = v;
   document.querySelectorAll('.tab').forEach(t => {
-    // La tab visible para vistas detalle es la padre (sup para cap-detail, aprob para aprob-cap)
     const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap') ? 'aprob' : v;
     t.classList.toggle('active', t.dataset.tab === tabActiva);
   });
@@ -834,7 +832,7 @@ async function callBackend(action, payload, _retryCount) {
   const body = Object.assign({
     action: action,
     token: session.token,
-    mis_proyectos: (session.proyectos || '')  // por si el central no la propaga
+    mis_proyectos: (session.proyectos || '')
   }, payload || {});
   const resp = await fetch(BACKEND_URL, {
     method: 'POST',
@@ -844,7 +842,6 @@ async function callBackend(action, payload, _retryCount) {
   });
   const json = await resp.json();
   if (!json.ok) {
-    // Retry automático ante "token expirado": el central tiene cache stale a veces
     if (esErrorDeToken(json.error) && (_retryCount || 0) < 2) {
       await sleep(400 + (_retryCount || 0) * 600);
       return callBackend(action, payload, (_retryCount || 0) + 1);
@@ -1052,44 +1049,131 @@ async function reactivarEmp(id) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ═══ PANEL SUPERVISOR — LISTA                                                ═══
+// ═══ PANEL SUPERVISOR — LISTA  (v3.3 con selector de quincena)              ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function initSupervisor() {
-  document.getElementById('quin-vigente').textContent = '...';
-  document.getElementById('quin-fechas').textContent = 'Cargando...';
+  renderSupervisorToolbar(true); // loading
   try {
-    // 1. Cargar quincena vigente
-    const q = await callBackend('quincenaActual');
-    quincenaVigente = q.quincena;
-    document.getElementById('quin-vigente').textContent = quincenaVigente.id;
-    document.getElementById('quin-fechas').textContent =
-      `Del ${quincenaVigente.fecha_inicio} al ${quincenaVigente.fecha_fin} · Pago: ${quincenaVigente.fecha_pago}`;
+    // v3.3: usamos quincenasCapturables, que ya incluye la actual + las pendientes
+    const r = await callBackend('quincenasCapturables', {});
+    quincenasCapturablesSup = r.quincenas || [];
 
-    // 2. Cargar mis proyectos asignados (filtrados por catálogo activo)
+    // Encuentra la default
+    const def = quincenasCapturablesSup.find(q => q.es_default) || quincenasCapturablesSup[quincenasCapturablesSup.length - 1];
+    quincenaVigente = def;
+
+    // Mis proyectos
     const p = await callBackend('misProyectos');
     proyectosAsignados = p.proyectos || [];
     if (p.asignados && p.asignados.length > 0 && proyectosAsignados.length === 0) {
       toast('Tus obras asignadas no están en el catálogo activo', 'error');
     }
 
-    // 3. Cargar mis capturas
+    renderSupervisorToolbar(false);
     await cargarCapturas();
 
-    // Cargar empleados activos (endpoint público para supervisores)
     if (empleados.length === 0) {
       try {
-        const r = tieneRH
+        const r2 = tieneRH
           ? await callBackend('listarEmpleados', { incluir_inactivos: false })
           : await callBackend('listarEmpleadosActivos');
-        empleados = r.empleados || [];
+        empleados = r2.empleados || [];
       } catch(e) {
         console.warn('No se pudo cargar catálogo de empleados:', e.message);
       }
     }
   } catch(err) {
+    document.getElementById('sup-toolbar').innerHTML = '<div class="cap-info">Error: ' + escapeHtml(err.message) + '</div>';
     toast(err.message, 'error');
   }
+}
+
+/**
+ * v3.3: Render del toolbar del supervisor.
+ * - Si hay 1 sola quincena capturable: texto plano como antes.
+ * - Si hay múltiples: <select> con todas + mensaje sutil si la default NO es la actual.
+ */
+function renderSupervisorToolbar(loading) {
+  const cont = document.getElementById('sup-toolbar');
+  if (loading) {
+    cont.innerHTML = `
+      <div class="cap-toolbar-row">
+        <span class="cap-info">Cargando quincenas...</span>
+      </div>`;
+    return;
+  }
+
+  if (!quincenaVigente || quincenasCapturablesSup.length === 0) {
+    cont.innerHTML = `
+      <div class="cap-toolbar-row">
+        <span class="cap-info">No hay quincenas disponibles.</span>
+        <button class="btn btn-sm" onclick="abrirNuevaCap()" disabled>+ Nueva</button>
+      </div>`;
+    return;
+  }
+
+  const multiple = quincenasCapturablesSup.length > 1;
+  const sel = quincenaVigente;
+  const fechaTxt = `Del ${sel.fecha_inicio} al ${sel.fecha_fin} · Pago: ${sel.fecha_pago}`;
+
+  let toolbar = '';
+
+  if (multiple) {
+    // Selector
+    const options = quincenasCapturablesSup.map(q => {
+      const pendTxt = q.pendientes > 0 ? ` (${q.pendientes} pendiente${q.pendientes === 1 ? '' : 's'})` : '';
+      const actTxt  = q.es_actual ? ' · actual' : '';
+      const sel = q.id === quincenaVigente.id ? 'selected' : '';
+      return `<option value="${q.id}" ${sel}>${q.fecha_inicio} → ${q.fecha_fin}${pendTxt}${actTxt}</option>`;
+    }).join('');
+
+    toolbar += `
+      <div class="cap-toolbar-row">
+        <select class="quincena-select" onchange="cambiarQuincenaSup(this.value)">${options}</select>
+        <button class="btn btn-sm" onclick="abrirNuevaCap()">+ Nueva</button>
+      </div>
+      <div class="cap-toolbar-row">
+        <span class="cap-info">${fechaTxt}</span>
+      </div>`;
+
+    // Mensaje sutil: si la quincena seleccionada NO es la actual calendárica
+    if (!sel.es_actual && sel.pendientes > 0) {
+      const actual = quincenasCapturablesSup.find(q => q.es_actual);
+      if (actual) {
+        toolbar += `
+          <div class="quincena-aviso">
+            Mostrando ${sel.fecha_inicio} porque tienes ${sel.pendientes} captura${sel.pendientes === 1 ? '' : 's'} pendiente${sel.pendientes === 1 ? '' : 's'}. Cambia arriba para ver ${actual.fecha_inicio}.
+          </div>`;
+      }
+    }
+  } else {
+    // Vista clásica de una sola quincena
+    toolbar += `
+      <div class="cap-toolbar-row">
+        <span class="cap-info">Quincena vigente: <b>${sel.id}</b></span>
+        <button class="btn btn-sm" onclick="abrirNuevaCap()">+ Nueva</button>
+      </div>
+      <div class="cap-toolbar-row">
+        <span class="cap-info">${fechaTxt}</span>
+      </div>`;
+  }
+
+  cont.innerHTML = toolbar;
+}
+
+/** v3.3: Cambia la quincena seleccionada y recarga capturas. */
+async function cambiarQuincenaSup(quincenaId) {
+  const nueva = quincenasCapturablesSup.find(q => q.id === quincenaId);
+  if (!nueva) return;
+  quincenaVigente = nueva;
+  renderSupervisorToolbar(false);
+  await cargarCapturas();
+}
+
+/** v3.3: Recarga completa (vuelve a pedir quincenas + capturas). */
+async function recargarSupervisor() {
+  await initSupervisor();
 }
 
 async function cargarCapturas() {
@@ -1130,11 +1214,11 @@ function renderCapturas() {
 }
 
 function abrirNuevaCap() {
+  if (!quincenaVigente) { toast('No hay quincena seleccionada', 'error'); return; }
   if (proyectosAsignados.length === 0) {
     toast('No tienes obras asignadas en el catálogo activo', 'error');
     return;
   }
-  // Filtrar las que ya tienen captura en la quincena
   const yaConCaptura = capturas.map(c => c.proyecto);
   const disponibles  = proyectosAsignados.filter(p => yaConCaptura.indexOf(p) < 0);
   if (disponibles.length === 0) {
@@ -1181,16 +1265,13 @@ function abrirCaptura(id) {
 }
 
 async function cargarCaptura(id) {
-  // v3.2-fix: cerrar actionsheet si quedó abierto
   if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
     try { cerrarMenuDia(); } catch(e) {}
   }
 
   const esAdmin = vista === 'admin';
   if (esAdmin) {
-    // Para la administrativa, recargamos con obtenerCapturaAdmin
     await recargarAdmin();
-    // Mantener contexto activo
     activarContextoAdmin();
     return;
   }
@@ -1211,7 +1292,6 @@ function renderCapturaDetalle() {
   const q = datosCaptura.quincena;
   document.getElementById('topbar-subtitle').textContent = 'Nómina · ' + c.proyecto;
 
-  // Header
   const hdr = document.getElementById('cap-detail-header');
   const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
   hdr.innerHTML = `
@@ -1225,7 +1305,6 @@ function renderCapturaDetalle() {
     ${c.comentario_rechazo ? `<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">⚠️ ${escapeHtml(c.comentario_rechazo)}</div></div>` : ''}
   `;
 
-  // Lista de empleados
   const cont = document.getElementById('lista-emp-cap');
   if (datosCaptura.empleados.length === 0) {
     cont.innerHTML = `
@@ -1239,7 +1318,6 @@ function renderCapturaDetalle() {
   }
   document.getElementById('count-emp-cap').textContent = datosCaptura.empleados.length + ' empleado' + (datosCaptura.empleados.length === 1 ? '' : 's');
 
-  // FAB
   const fab = document.getElementById('fab-bar-cap');
   if (c.estado === 'BORRADOR' || c.estado === 'RECHAZADA') {
     fab.innerHTML = `<button class="btn btn-block" onclick="enviarCaptura()">Enviar para aprobación</button>`;
@@ -1257,7 +1335,6 @@ function renderEmpleadoCap(emp, editable) {
 
   const tarifa = parseFloat(emp.tarifa_diaria || 0);
 
-  // Calendario 14 días
   let cal = '';
   for (let i = 0; i < 14; i++) {
     const d = dias.find(x => parseInt(x.dia_offset,10) === i);
@@ -1267,14 +1344,12 @@ function renderEmpleadoCap(emp, editable) {
     cal += `<button class="dia-btn ${marca}" ${onclickAttr}><span class="dia-num">${fecha}</span><span class="dia-mark">${marca || '·'}</span></button>`;
   }
 
-  // Totales
   const diasT = dias.filter(d => String(d.marca).toUpperCase() === 'T').length;
   const totalDias = diasT * tarifa;
   const totalExtras = extras.reduce((s, e) => s + parseFloat(e.monto || 0), 0);
   const totalViaticos = viaticos.reduce((s, v) => s + parseFloat(v.monto || 0), 0);
   const total = totalDias + totalExtras + totalViaticos;
 
-  // Extras list
   const extrasList = extras.map(e => `
     <div class="subsec-item">
       <div class="subsec-item-info">${parseFloat(e.horas||0)}h${e.descripcion ? ' · ' + escapeHtml(e.descripcion) : ''}</div>
@@ -1286,7 +1361,6 @@ function renderEmpleadoCap(emp, editable) {
     </div>
   `).join('');
 
-  // Viaticos list
   const viaticosList = viaticos.map(v => `
     <div class="subsec-item">
       <div class="subsec-item-info">${escapeHtml(v.concepto || '—')}</div>
@@ -1357,7 +1431,6 @@ function filtrarAddEmp() {
   const hint   = document.getElementById('add-emp-hint');
   addEmpIndex = -1;
 
-  // Si el usuario edita después de seleccionar, deselecciona
   if (addEmpSelected) {
     addEmpSelected = null;
     document.getElementById('add-emp-selected').style.display = 'none';
@@ -1385,7 +1458,6 @@ function filtrarAddEmp() {
       _yaEn: yaEnCaptura.indexOf(String(e.id)) >= 0
     }))
     .sort((a, b) => {
-      // Los ya en captura al final
       if (a._yaEn !== b._yaEn) return a._yaEn ? 1 : -1;
       return String(a.nombre || '').localeCompare(String(b.nombre || ''));
     })
@@ -1472,20 +1544,17 @@ async function confirmarAgregarEmp() {
   const emp = addEmpSelected;
   cerrarAgregarEmp();
 
-  // 1. UPDATE OPTIMISTA — agregar el empleado al estado local y rerenderizar la lista
   if (!datosCaptura.empleados.find(e => String(e.id) === String(emp.id))) {
     datosCaptura.empleados.push(emp);
     rerenderListaEmpleados();
   }
 
-  // 2. SYNC EN BACKGROUND
   try {
     const r = await callBackendSilent('agregarEmpleadoCap', {
       captura_id: capturaActual,
       empleado_id: emp.id
     });
     if (!r.ok) {
-      // Revertir
       const k = datosCaptura.empleados.findIndex(e => String(e.id) === String(emp.id));
       if (k >= 0) datosCaptura.empleados.splice(k, 1);
       rerenderListaEmpleados();
@@ -1499,18 +1568,15 @@ async function confirmarAgregarEmp() {
   }
 }
 
-// Set de empleados en proceso de eliminación (anti doble-tap en Android)
 const _quitandoEmpleados = new Set();
 
 async function quitarEmpleadoCap(empleadoId) {
-  // v3.2: anti-doble-tap. Si ya estamos quitando este empleado, ignora.
   const key = String(empleadoId);
   if (_quitandoEmpleados.has(key)) return;
 
   const emp = datosCaptura.empleados.find(e => String(e.id) === String(empleadoId));
   if (!emp) return;
 
-  // Marcar como "en proceso" ANTES del confirm para que el ghost click no abra dos confirms
   _quitandoEmpleados.add(key);
 
   let confirmado = false;
@@ -1523,7 +1589,6 @@ async function quitarEmpleadoCap(empleadoId) {
     return;
   }
 
-  // 1. UPDATE OPTIMISTA
   const empBackup = { ...emp };
   const diasBackup = datosCaptura.dias.filter(d => String(d.empleado_id) === String(empleadoId));
   const extrasBackup = datosCaptura.extras.filter(e => String(e.empleado_id) === String(empleadoId));
@@ -1535,14 +1600,12 @@ async function quitarEmpleadoCap(empleadoId) {
   datosCaptura.viaticos = datosCaptura.viaticos.filter(v => String(v.empleado_id) !== String(empleadoId));
   rerenderListaEmpleados();
 
-  // 2. SYNC
   try {
     const r = await callBackendSilent('quitarEmpleadoCap', {
       captura_id: capturaActual,
       empleado_id: empleadoId
     });
     if (!r.ok) {
-      // Revertir
       datosCaptura.empleados.push(empBackup);
       datosCaptura.dias.push(...diasBackup);
       datosCaptura.extras.push(...extrasBackup);
@@ -1562,12 +1625,10 @@ async function quitarEmpleadoCap(empleadoId) {
   }
 }
 
-/** Re-renderiza toda la lista de empleados sin tocar el backend. */
 function rerenderListaEmpleados() {
   const c = datosCaptura?.captura;
   if (!c) return;
   const esAdmin = vista === 'admin';
-  // Para admin: editable solo si BORRADOR. Para obra: BORRADOR/ENVIADA/RECHAZADA.
   const editable = esAdmin
     ? c.estado === 'BORRADOR'
     : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
@@ -1590,13 +1651,10 @@ function rerenderListaEmpleados() {
   }
   document.getElementById(countId).textContent =
     datosCaptura.empleados.length + ' empleado' + (datosCaptura.empleados.length === 1 ? '' : 's');
-  // Si es admin, también sincronizamos adminDatosCaptura
   if (esAdmin) adminDatosCaptura = datosCaptura;
 }
 
-// ─── Marcar día (TAP CÍCLICO: vacío → T → D → F → B → vacío) ─────────────────
-// ─── v3.2: Menú de selección de marca (actionsheet) ─────────────────────────
-// Reemplaza el tap cíclico con un menú explícito. Soluciona ghost click en Android.
+// ─── Marcar día con actionsheet ───────────────────────────────────────────────
 
 const MARCAS_INFO = [
   { codigo: 'T', label: 'Trabajó' },
@@ -1606,44 +1664,36 @@ const MARCAS_INFO = [
   { codigo: '', label: 'Vacío' }
 ];
 
-// Contexto del menú abierto (para que seleccionarMarca sepa a qué empleado/día aplica)
-let menuDiaCtx = null; // { empleadoId, diaOffset }
+let menuDiaCtx = null;
 
 function abrirMenuDia(empleadoId, diaOffset) {
   const c = datosCaptura?.captura;
   if (!c) return;
-  // Validar que sea editable (defensivo: el onclick ya solo se renderiza si editable)
   const esAdmin = vista === 'admin';
   const editable = esAdmin
     ? c.estado === 'BORRADOR'
     : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
   if (!editable) return;
 
-  // v3.2-fix: auto-recuperación. Si menuDiaCtx quedó pegado pero el actionsheet
-  // no está visualmente abierto, limpiar y continuar.
   const sheetVisible = document.getElementById('actionsheet-marca').classList.contains('show');
   if (menuDiaCtx && !sheetVisible) {
     console.warn('menuDiaCtx pegado, limpiando');
     menuDiaCtx = null;
   }
 
-  // Si ya hay menú abierto (visualmente), ignorar (un actionsheet a la vez)
   if (menuDiaCtx) return;
 
-  // Calcular marca actual del día
   const d = (datosCaptura.dias || []).find(x =>
     String(x.empleado_id) === String(empleadoId) &&
     parseInt(x.dia_offset, 10) === diaOffset
   );
   const marcaActual = d ? String(d.marca || '').toUpperCase() : '';
 
-  // Buscar nombre del empleado para el header
   const emp = (datosCaptura.empleados || []).find(e => String(e.id) === String(empleadoId));
   const nombreCorto = emp ? emp.nombre.split(' ').slice(0, 2).join(' ') : 'Empleado';
   document.getElementById('as-emp').textContent = nombreCorto;
   document.getElementById('as-fecha').textContent = fechaDeOffsetCompleta(diaOffset);
 
-  // Generar opciones
   const opts = MARCAS_INFO.map(m => {
     const seleccionada = m.codigo === marcaActual;
     const chipClass = m.codigo === '' ? 'X' : m.codigo;
@@ -1668,7 +1718,6 @@ function cerrarMenuDia() {
 }
 
 function cerrarMenuDiaSiFuera(e) {
-  // Click en el background (fuera del actionsheet) cierra
   if (e.target.id === 'actionsheet-marca') cerrarMenuDia();
 }
 
@@ -1686,7 +1735,6 @@ async function seleccionarMarca(marca) {
   if (!menuDiaCtx) return;
   const { empleadoId, diaOffset } = menuDiaCtx;
   cerrarMenuDia();
-  // Llamar al handler real con la marca explícita (sin ciclo)
   await marcarDiaInterno(empleadoId, diaOffset, String(marca || '').toUpperCase());
 }
 
@@ -1699,7 +1747,6 @@ async function marcarDiaInterno(empleadoId, diaOffset, marca) {
     : ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
   if (!editable) return;
 
-  // Si la marca elegida es la misma que ya estaba, no hacemos nada
   const dias = datosCaptura.dias;
   const ix = dias.findIndex(d =>
     String(d.empleado_id) === String(empleadoId) &&
@@ -1710,7 +1757,6 @@ async function marcarDiaInterno(empleadoId, diaOffset, marca) {
 
   const previo = ix >= 0 ? { ...dias[ix] } : null;
 
-  // 1. UPDATE OPTIMISTA
   if (marca === '') {
     if (ix >= 0) dias.splice(ix, 1);
   } else {
@@ -1728,7 +1774,6 @@ async function marcarDiaInterno(empleadoId, diaOffset, marca) {
   }
   rerenderEmpleadoEnCaptura(empleadoId);
 
-  // 2. SYNC EN SEGUNDO PLANO
   const revertir = () => {
     const k = datosCaptura.dias.findIndex(d =>
       String(d.empleado_id) === String(empleadoId) &&
@@ -1766,7 +1811,6 @@ async function marcarDiaInterno(empleadoId, diaOffset, marca) {
 }
 
 
-// Versión silenciosa: no lanza, devuelve {ok, error?}
 async function callBackendSilent(action, payload, _retryCount) {
   try {
     const body = Object.assign({
@@ -1795,11 +1839,11 @@ function empleadoNombreShort(empId) {
   return e ? e.nombre.split(' ').slice(0,2).join(' ') : 'Empleado';
 }
 
-// Re-renderiza solo la tarjeta de un empleado dentro del panel de captura (sin recargar del backend)
 function rerenderEmpleadoEnCaptura(empleadoId) {
   const c = datosCaptura?.captura;
   if (!c) return;
-  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0;
+  const editable = ['BORRADOR','ENVIADA','RECHAZADA'].indexOf(c.estado) >= 0
+                || (vista === 'admin' && c.estado === 'BORRADOR');
   const emp = (datosCaptura.empleados || []).find(x => String(x.id) === String(empleadoId));
   if (!emp) return;
   const card = document.querySelector(`.empleado-cap[data-emp="${empleadoId}"]`);
@@ -1833,7 +1877,6 @@ function cerrarExtra() { document.getElementById('modal-extra').classList.remove
 async function guardarExtra() {
   if (!extraCtx) return;
   const btn = document.getElementById('btn-guardar-extra');
-  // Anti-doble-tap (ghost click en Android): si ya está guardando, ignora
   if (btn.disabled) return;
   const horas = parseFloat(document.getElementById('ex-horas').value || 0);
   const monto = parseFloat(document.getElementById('ex-monto').value || 0);
@@ -1884,7 +1927,6 @@ function cerrarViatico() { document.getElementById('modal-via').classList.remove
 async function guardarViatico() {
   if (!viaticoCtx) return;
   const btn = document.getElementById('btn-guardar-viatico');
-  // Anti-doble-tap (ghost click en Android): si ya está guardando, ignora
   if (btn.disabled) return;
   const concepto = document.getElementById('via-concepto').value.trim();
   const monto = parseFloat(document.getElementById('via-monto').value || 0);
@@ -1942,7 +1984,6 @@ async function initAprob() {
   document.getElementById('aprob-conflictos').innerHTML = '';
 
   try {
-    // Cargar lista en paralelo con conflictos
     const [r, c] = await Promise.all([
       callBackend('listarCapturasParaAprobar', {}),
       callBackend('detectarConflictos', {})
@@ -1951,7 +1992,6 @@ async function initAprob() {
     aprobCapturas = r.capturas || [];
     aprobConflictos = c.conflictos || [];
 
-    // Header
     document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
     if (aprobQuincena.fecha_inicio) {
       document.getElementById('aprob-quin-fechas').textContent =
@@ -1960,17 +2000,13 @@ async function initAprob() {
       document.getElementById('aprob-quin-fechas').textContent = '';
     }
 
-    // Resumen
     const res = r.resumen || {};
     document.getElementById('rs-enviada').textContent   = res.ENVIADA   || 0;
     document.getElementById('rs-aprobada').textContent  = res.APROBADA  || 0;
     document.getElementById('rs-borrador').textContent  = res.BORRADOR  || 0;
     document.getElementById('rs-rechazada').textContent = res.RECHAZADA || 0;
 
-    // Banner de conflictos
     renderConflictosBanner();
-
-    // Lista
     renderAprobLista();
   } catch(err) {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
@@ -2048,7 +2084,6 @@ function abrirCapturaAprob(id) {
 }
 
 async function cargarCapturaAprob(id) {
-  // v3.2-fix: cerrar actionsheet si quedó abierto
   if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
     try { cerrarMenuDia(); } catch(e) {}
   }
@@ -2068,12 +2103,10 @@ function renderCapturaAprobDetalle() {
   const c = aprobDatosCaptura.captura;
   const q = aprobDatosCaptura.quincena;
 
-  // v3.2-fix: activar contexto de aprobación desde el inicio.
   datosCaptura = aprobDatosCaptura;
 
   document.getElementById('topbar-subtitle').textContent = 'Nómina · Revisar ' + c.proyecto;
 
-  // Header con info de supervisor + estado
   const hdr = document.getElementById('aprob-cap-header');
   hdr.innerHTML = `
     <div class="cap-toolbar-row">
@@ -2088,7 +2121,6 @@ function renderCapturaAprobDetalle() {
     ${c.comentario_rechazo ? `<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">⚠️ ${escapeHtml(c.comentario_rechazo)}</div></div>` : ''}
   `;
 
-  // Lista de empleados (modo lectura: editable=false)
   const cont = document.getElementById('aprob-cap-lista-emp');
   if (aprobDatosCaptura.empleados.length === 0) {
     cont.innerHTML = `
@@ -2101,7 +2133,6 @@ function renderCapturaAprobDetalle() {
   }
   document.getElementById('aprob-cap-count-emp').textContent = aprobDatosCaptura.empleados.length + ' empleado' + (aprobDatosCaptura.empleados.length === 1 ? '' : 's');
 
-  // FAB con acciones según estado
   const fab = document.getElementById('aprob-cap-fab');
   if (c.estado === 'ENVIADA') {
     fab.innerHTML = `
@@ -2111,7 +2142,6 @@ function renderCapturaAprobDetalle() {
   } else if (c.estado === 'APROBADA') {
     fab.innerHTML = `<button class="btn btn-secondary btn-block" onclick="abrirReabrir()">Reabrir captura</button>`;
   } else {
-    // BORRADOR / RECHAZADA: solo lectura, sin acciones
     fab.innerHTML = '';
   }
 }
@@ -2176,7 +2206,7 @@ async function confirmarReabrir() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ═══ FASE 3c: CAPTURA ADMINISTRATIVA (Mariana)                               ═══
+// ═══ FASE 3c: CAPTURA ADMINISTRATIVA (Mariana) — v3.3 con selector          ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const PROYECTO_ADMIN_FE = 'INDIRECTOS_OFICINA';
@@ -2189,10 +2219,16 @@ async function initAdmin() {
   document.getElementById('admin-fab').innerHTML = '';
 
   try {
-    const r = await callBackend('obtenerCapturaAdmin', {});
+    // v3.3: Primero recuperamos la lista de quincenas capturables para Mariana
+    const qr = await callBackend('quincenasCapturables', {});
+    quincenasCapturablesAdmin = qr.quincenas || [];
+    const def = quincenasCapturablesAdmin.find(q => q.es_default) || quincenasCapturablesAdmin[quincenasCapturablesAdmin.length - 1];
+    adminQuincenaSeleccionada = def ? def.id : null;
+
+    // Luego pedimos la captura admin de esa quincena
+    const r = await callBackend('obtenerCapturaAdmin', { quincena_id: adminQuincenaSeleccionada });
     adminDatosCaptura = r;
 
-    // Cargar empleados activos si aún no están en memoria (para el "Agregar")
     if (empleados.length === 0) {
       try {
         const er = tieneRH
@@ -2216,30 +2252,67 @@ function renderAdminDetalle() {
   const q = adminDatosCaptura.quincena;
   const editable = c.estado === 'BORRADOR';
 
-  // v3.2-fix: activar contexto admin desde el inicio. Las funciones que se
-  // disparan después del render (abrirMenuDia, etc.) leen datosCaptura/capturaActual.
   datosCaptura = adminDatosCaptura;
   capturaActual = c.id;
 
-  // Header
+  // v3.3: Header con selector si hay múltiples quincenas
   const hdr = document.getElementById('admin-header');
-  hdr.innerHTML = `
-    <div class="cap-toolbar-row">
-      <div>
-        <div class="cap-proj">Nómina administrativa</div>
-        <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
-        ${c.aprobada_por ? `<div class="aprob-cap-supervisor">Cerrada por: <b>${escapeHtml(c.aprobada_por)}</b>${c.fecha_aprobacion ? ' el ' + escapeHtml(String(c.fecha_aprobacion)) : ''}</div>` : ''}
-      </div>
-      <span class="cap-status ${c.estado}">${c.estado}</span>
-    </div>
-  `;
+  const multiple = quincenasCapturablesAdmin.length > 1;
+  const sel = quincenasCapturablesAdmin.find(qx => qx.id === adminQuincenaSeleccionada) || quincenasCapturablesAdmin[0];
 
-  // Mostrar legenda y header de lista solo si hay empleados o se permite agregar
+  let hdrHtml = '';
+
+  if (multiple && sel) {
+    const options = quincenasCapturablesAdmin.map(qx => {
+      const pendTxt = qx.pendientes > 0 ? ` (${qx.pendientes} pendiente${qx.pendientes === 1 ? '' : 's'})` : '';
+      const actTxt  = qx.es_actual ? ' · actual' : '';
+      const selected = qx.id === adminQuincenaSeleccionada ? 'selected' : '';
+      return `<option value="${qx.id}" ${selected}>${qx.fecha_inicio} → ${qx.fecha_fin}${pendTxt}${actTxt}</option>`;
+    }).join('');
+
+    hdrHtml = `
+      <div class="cap-toolbar-row">
+        <select class="quincena-select" onchange="cambiarQuincenaAdmin(this.value)">${options}</select>
+        <span class="cap-status ${c.estado}">${c.estado}</span>
+      </div>
+      <div class="cap-toolbar-row">
+        <div>
+          <div class="cap-proj">Nómina administrativa</div>
+          <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
+          ${c.aprobada_por ? `<div class="aprob-cap-supervisor">Cerrada por: <b>${escapeHtml(c.aprobada_por)}</b>${c.fecha_aprobacion ? ' el ' + escapeHtml(String(c.fecha_aprobacion)) : ''}</div>` : ''}
+        </div>
+      </div>
+    `;
+
+    // Mensaje sutil si la seleccionada NO es la actual
+    if (sel && !sel.es_actual && sel.pendientes > 0) {
+      const actual = quincenasCapturablesAdmin.find(qx => qx.es_actual);
+      if (actual) {
+        hdrHtml += `
+          <div class="quincena-aviso">
+            Mostrando ${sel.fecha_inicio} porque tienes ${sel.pendientes} captura pendiente. Cambia arriba para ver ${actual.fecha_inicio}.
+          </div>`;
+      }
+    }
+  } else {
+    hdrHtml = `
+      <div class="cap-toolbar-row">
+        <div>
+          <div class="cap-proj">Nómina administrativa</div>
+          <div class="cap-quin">Quincena ${c.quincena_id} · ${q.fecha_inicio} → ${q.fecha_fin}</div>
+          ${c.aprobada_por ? `<div class="aprob-cap-supervisor">Cerrada por: <b>${escapeHtml(c.aprobada_por)}</b>${c.fecha_aprobacion ? ' el ' + escapeHtml(String(c.fecha_aprobacion)) : ''}</div>` : ''}
+        </div>
+        <span class="cap-status ${c.estado}">${c.estado}</span>
+      </div>
+    `;
+  }
+
+  hdr.innerHTML = hdrHtml;
+
   document.getElementById('admin-section-header').style.display = 'flex';
-  document.getElementById('admin-legenda').style.display = editable ? 'flex' : 'flex';
+  document.getElementById('admin-legenda').style.display = 'flex';
   document.getElementById('admin-btn-agregar').style.display = editable ? '' : 'none';
 
-  // Lista de empleados (reutilizo renderEmpleadoCap apuntando temporalmente datosCaptura)
   const cont = document.getElementById('admin-lista-emp');
   if (adminDatosCaptura.empleados.length === 0) {
     cont.innerHTML = `
@@ -2254,7 +2327,6 @@ function renderAdminDetalle() {
   document.getElementById('admin-count-emp').textContent =
     adminDatosCaptura.empleados.length + ' empleado' + (adminDatosCaptura.empleados.length === 1 ? '' : 's');
 
-  // FAB con acciones según estado
   const fab = document.getElementById('admin-fab');
   if (c.estado === 'BORRADOR') {
     fab.innerHTML = `<button class="btn btn-block" onclick="abrirCerrarAdmin()">Cerrar nómina administrativa</button>`;
@@ -2265,39 +2337,37 @@ function renderAdminDetalle() {
   }
 }
 
-// ─── Wrapper de operaciones del admin ────────────────────────────────────────
-// Todos los handlers de captura (toggleDia, agregar empleado, extras, viáticos)
-// dependen de las variables globales `datosCaptura` y `capturaActual`. Para que
-// la administrativa los reuse, preparamos el contexto antes de cada operación
-// y refrescamos al terminar.
-
-/** Configura el contexto para que las funciones existentes operen sobre la admin. */
-function activarContextoAdmin() {
-  datosCaptura = adminDatosCaptura;
-  capturaActual = adminDatosCaptura?.captura?.id || null;
-}
-
-/** Recarga la captura admin desde el backend y rerenderiza. */
-async function recargarAdmin() {
-  // v3.2-fix: cerrar actionsheet si quedó abierto
-  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
-    try { cerrarMenuDia(); } catch(e) {}
-  }
+/** v3.3: Cambia la quincena en panel admin */
+async function cambiarQuincenaAdmin(quincenaId) {
+  adminQuincenaSeleccionada = quincenaId;
   try {
-    const r = await callBackend('obtenerCapturaAdmin', {});
+    const r = await callBackend('obtenerCapturaAdmin', { quincena_id: quincenaId });
     adminDatosCaptura = r;
     renderAdminDetalle();
   } catch(err) { toast(err.message, 'error'); }
 }
 
-// ─── Agregar empleado (admin) ────────────────────────────────────────────────
+function activarContextoAdmin() {
+  datosCaptura = adminDatosCaptura;
+  capturaActual = adminDatosCaptura?.captura?.id || null;
+}
+
+async function recargarAdmin() {
+  if (typeof menuDiaCtx !== 'undefined' && menuDiaCtx !== null) {
+    try { cerrarMenuDia(); } catch(e) {}
+  }
+  try {
+    const r = await callBackend('obtenerCapturaAdmin', { quincena_id: adminQuincenaSeleccionada });
+    adminDatosCaptura = r;
+    renderAdminDetalle();
+  } catch(err) { toast(err.message, 'error'); }
+}
+
 function abrirAgregarEmpAdmin() {
-  // Reutiliza el mismo modal que el supervisor pero apuntando a la admin
   activarContextoAdmin();
   abrirAgregarEmp();
 }
 
-// ─── Cerrar / reabrir admin ──────────────────────────────────────────────────
 function abrirCerrarAdmin() {
   document.getElementById('btn-confirmar-cerrar-admin').disabled = false;
   document.getElementById('btn-confirmar-cerrar-admin').textContent = 'Cerrar nómina';
@@ -2313,7 +2383,8 @@ async function confirmarCerrarAdmin() {
     await callBackend('cerrarCapturaAdmin', { captura_id: adminDatosCaptura.captura.id });
     cerrarCerrarAdmin();
     toast('Nómina administrativa cerrada', 'success');
-    await recargarAdmin();
+    // v3.3: al cerrar, la quincena ya no tiene pendientes — recargamos lista
+    await initAdmin();
   } catch(err) { toast(err.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Cerrar nómina'; }
 }
