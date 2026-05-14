@@ -140,7 +140,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .empleado-cap-name{font-size:13px;font-weight:700;line-height:1.3;flex:1;}
 .empleado-cap-quitar{background:none;border:none;color:var(--err);font-size:18px;cursor:pointer;padding:4px 6px;line-height:1;}
 
-.calendario{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:10px;}
+.calendario{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:10px;}
 .dia-btn{aspect-ratio:1;border:0.5px solid var(--border);border-radius:6px;background:var(--bg);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;}
 .dia-btn:active{transform:scale(.94);}
 .dia-num{font-size:9px;color:var(--muted);font-weight:400;}
@@ -1336,7 +1336,20 @@ function renderEmpleadoCap(emp, editable) {
   const tarifa = parseFloat(emp.tarifa_diaria || 0);
 
   let cal = '';
+  // v3.4: Saltamos los domingos del calendario. Los offsets siguen siendo 0-13
+  // internamente, pero los que caen en domingo no se renderizan. Nadie trabaja
+  // domingo en CAMI; si en el futuro hay excepciones, se quita este filtro.
+  const qInicio = datosCaptura?.quincena?.fecha_inicio;
+  const partesInicio = qInicio ? String(qInicio).split('-') : null;
+  const baseDate = partesInicio
+    ? new Date(+partesInicio[0], +partesInicio[1]-1, +partesInicio[2])
+    : null;
   for (let i = 0; i < 14; i++) {
+    if (baseDate) {
+      const fechaActual = new Date(baseDate);
+      fechaActual.setDate(baseDate.getDate() + i);
+      if (fechaActual.getDay() === 0) continue; // 0 = domingo, no se renderiza
+    }
     const d = dias.find(x => parseInt(x.dia_offset,10) === i);
     const marca = d ? String(d.marca || '').toUpperCase() : '';
     const fecha = fechaDeOffset(i);
