@@ -56,7 +56,9 @@ const HOJAS = {
   CAPTURA_DIAS:      'CAPTURA_DIAS',
   CAPTURA_EXTRAS:    'CAPTURA_EXTRAS',
   CAPTURA_VIATICOS:  'CAPTURA_VIATICOS',
-  APROBACIONES_LOG:  'APROBACIONES_LOG'
+  APROBACIONES_LOG:  'APROBACIONES_LOG',
+  NOMINA_RESULTADOS: 'NOMINA_RESULTADOS',
+  NOMINA_AGREGADOS:  'NOMINA_AGREGADOS'
 };
 
 const HEADERS = {
@@ -66,7 +68,9 @@ const HEADERS = {
   CAPTURA_DIAS:     ['id','captura_id','empleado_id','dia_offset','marca'],
   CAPTURA_EXTRAS:   ['id','captura_id','empleado_id','horas','monto','descripcion'],
   CAPTURA_VIATICOS: ['id','captura_id','empleado_id','concepto','monto'],
-  APROBACIONES_LOG: ['id','captura_id','accion','usuario','fecha','comentario']
+  APROBACIONES_LOG: ['id','captura_id','accion','usuario','fecha','comentario'],
+  NOMINA_RESULTADOS: ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo'],
+  NOMINA_AGREGADOS:  ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo']
 };
 
 const PRECARGA_EMPLEADOS = [
@@ -1704,6 +1708,57 @@ function handleReabrirCapturaAdmin(data) {
 
 // ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
 
+/**
+ * Asegura que existan las hojas NOMINA_RESULTADOS y NOMINA_AGREGADOS con
+ * sus headers correctos. Idempotente y barato: si ambas existen ya con
+ * headers OK, no escribe nada y retorna.
+ *
+ * Pensado para llamarse al inicio de endpoints que toquen estas hojas
+ * (Bloques 4-5 de Fase 3b). También se llama desde inicializarBD().
+ *
+ * Si una hoja existe pero los headers no coinciden, escribe warning con
+ * Logger.log (esperados vs encontrados). No auto-corrige ni lanza.
+ */
+function asegurarHojasNomina() {
+  const ss = SpreadsheetApp.getActive();
+
+  const defs = [
+    { nombre: HOJAS.NOMINA_RESULTADOS, headers: HEADERS.NOMINA_RESULTADOS },
+    { nombre: HOJAS.NOMINA_AGREGADOS,  headers: HEADERS.NOMINA_AGREGADOS  }
+  ];
+
+  // Fast path: si ambas existen con headers OK, no hacer nada.
+  let needsWork = false;
+  for (let i = 0; i < defs.length; i++) {
+    const sh = ss.getSheetByName(defs[i].nombre);
+    if (!sh) { needsWork = true; break; }
+    const cols = Math.max(sh.getLastColumn(), defs[i].headers.length);
+    const existing = sh.getRange(1, 1, 1, cols).getValues()[0];
+    const match = defs[i].headers.every(function (h, j) { return existing[j] === h; });
+    if (!match) { needsWork = true; break; }
+  }
+  if (!needsWork) return;
+
+  defs.forEach(function (d) {
+    let sh = ss.getSheetByName(d.nombre);
+    if (!sh) {
+      sh = ss.insertSheet(d.nombre);
+      sh.getRange(1, 1, 1, d.headers.length).setValues([d.headers]);
+      sh.getRange(1, 1, 1, d.headers.length).setFontWeight('bold').setBackground('#1A1A18').setFontColor('#FFFFFF');
+      sh.setFrozenRows(1);
+      return;
+    }
+    const cols = Math.max(sh.getLastColumn(), d.headers.length);
+    const existing = sh.getRange(1, 1, 1, cols).getValues()[0];
+    const match = d.headers.every(function (h, i) { return existing[i] === h; });
+    if (!match) {
+      Logger.log('⚠️ Hoja ' + d.nombre + ' existe con headers distintos. NO se sobreescribe.\n' +
+                 '  Esperados:   ' + JSON.stringify(d.headers) + '\n' +
+                 '  Encontrados: ' + JSON.stringify(existing.slice(0, d.headers.length)));
+    }
+  });
+}
+
 function inicializarBD() {
   const ss = SpreadsheetApp.getActive();
 
@@ -1746,6 +1801,8 @@ function inicializarBD() {
   asegurarHoja(HOJAS.CAPTURA_EXTRAS,    HEADERS.CAPTURA_EXTRAS);
   asegurarHoja(HOJAS.CAPTURA_VIATICOS,  HEADERS.CAPTURA_VIATICOS);
   asegurarHoja(HOJAS.APROBACIONES_LOG,  HEADERS.APROBACIONES_LOG);
+
+  asegurarHojasNomina();
 
   Logger.log('Inicialización v' + VERSION + ' completa.');
 }
