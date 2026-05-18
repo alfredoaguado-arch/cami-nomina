@@ -1,6 +1,12 @@
 /**
- * CAMI-Nomina v3.5
+ * CAMI-Nomina v3.6
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.6 (18-may-2026): Auditabilidad del snapshot.
+ *   - Agrega columna `guardado_por` en NOMINA_RESULTADOS (col 22) y NOMINA_AGREGADOS (col 12)
+ *   - handleGuardarCalculoNomina escribe userName(data) en la nueva columna
+ *   - handleObtenerCalculoNomina devuelve guardado_por top-level y por fila
+ *   - Requiere recrear las hojas (manual delete previo si ya existían con 21/11 cols)
  *
  * v3.5 (18-may-2026): Fase 3b completada — cálculo y persistencia de snapshot.
  *   - Bloque 1 ✓ calcularNomina(quincenaId) función pura
@@ -36,7 +42,7 @@
  *   - limpiarCaptura(id)    — Limpia días/extras/viáticos de una captura, regresa a BORRADOR
  */
 
-const VERSION = '3.5';
+const VERSION = '3.6';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -78,8 +84,8 @@ const HEADERS = {
   CAPTURA_EXTRAS:   ['id','captura_id','empleado_id','horas','monto','descripcion'],
   CAPTURA_VIATICOS: ['id','captura_id','empleado_id','concepto','monto'],
   APROBACIONES_LOG: ['id','captura_id','accion','usuario','fecha','comentario'],
-  NOMINA_RESULTADOS: ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo'],
-  NOMINA_AGREGADOS:  ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo']
+  NOMINA_RESULTADOS: ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por'],
+  NOMINA_AGREGADOS:  ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo','guardado_por']
 };
 
 const PRECARGA_EMPLEADOS = [
@@ -2216,12 +2222,14 @@ function handleObtenerCalculoNomina(data) {
 
   const calculado = resultados.length > 0;
   const timestampCalculo = calculado ? resultados[0].timestamp_calculo : null;
+  const guardadoPor      = calculado ? resultados[0].guardado_por      : null;
 
   return jsonResp({
     ok: true,
     quincena_id: quincenaId,
     calculado: calculado,
     timestamp_calculo: timestampCalculo,
+    guardado_por: guardadoPor,
     estado_quincena: estadoQuincena,
     resultados: resultados,
     agregados: agregados
@@ -2301,9 +2309,10 @@ function handleGuardarCalculoNomina(data) {
     }
 
     const timestampCalculo = nowStr();
+    const guardadoPor = userName(data);
 
-    // Construir filas para NOMINA_RESULTADOS (21 columnas)
-    // ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo']
+    // Construir filas para NOMINA_RESULTADOS (22 columnas)
+    // ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por']
     const proximoIdR = nextId(shR, 0);
     const filasR = calc.resultados.map(function (r, idx) {
       return [
@@ -2327,12 +2336,13 @@ function handleGuardarCalculoNomina(data) {
         r.excedente,                 // excedente
         r.comision_6pct,             // comision
         r.total_a_contadores,        // total_neto
-        timestampCalculo             // timestamp_calculo
+        timestampCalculo,            // timestamp_calculo
+        guardadoPor                  // guardado_por
       ];
     });
 
-    // Construir filas para NOMINA_AGREGADOS (11 columnas)
-    // ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo']
+    // Construir filas para NOMINA_AGREGADOS (12 columnas)
+    // ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo','guardado_por']
     const filasA = calc.agregados_proyecto.map(function (a) {
       const totalExcedente = round2(a.bruto_total - a.nomina_directo_total);
       return [
@@ -2346,7 +2356,8 @@ function handleGuardarCalculoNomina(data) {
         totalExcedente,              // total_excedente
         a.comision_6pct,             // total_comision
         a.total_a_contadores,        // monto_nomina_transaccion
-        timestampCalculo             // timestamp_calculo
+        timestampCalculo,            // timestamp_calculo
+        guardadoPor                  // guardado_por
       ];
     });
 
