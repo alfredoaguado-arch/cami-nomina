@@ -29,7 +29,7 @@ CAMI es una plataforma modular para operación interna (construcción / manufact
 
 `cami-nomina` es el módulo de **nómina quincenal**. Es uno de los módulos más complejos del ecosistema porque maneja flujos múltiples con varios roles, cálculos con tope IMSS y dispersión proporcional.
 
-**Versión actual:** v3.4 (calendario sin domingos, 13-may-2026)
+**Versión actual:** v3.5 (Fase 3b completa, 18-may-2026)
 
 ## 3. Roles y app keys
 
@@ -76,7 +76,7 @@ bruto = (días T + días D) × tarifa_diaria + horas_extras
 | 2 — Captura por obra (supervisores) | ✓ En uso real | Quincena automática, calendario, bloqueo de doble captura, extras, viáticos, herencia de empleados |
 | 3a — Panel de aprobación | ✓ Desplegado | Revisión consolidada, aprobar/rechazar, detección de conflictos |
 | 3c — Captura administrativa (Mariana) | ✓ Desplegado | Cierre directo sin aprobación |
-| **3b — Cálculo automático al aprobar** | ⏳ Pendiente | Tope IMSS, dispersión proporcional por días T+D, snapshot en NOMINA_RESULTADOS |
+| 3b — Cálculo automático al aprobar | ✓ Completada (18-may-2026) | Tope IMSS, dispersión proporcional por días T+D, snapshot en NOMINA_RESULTADOS + agregados en NOMINA_AGREGADOS |
 | **3e — Excel + email a contadores** | ⏳ Pendiente | Workbook con pestañas por proyecto + ADMINISTRATIVA, envío automático |
 | 3d — PDFs detallado / resumido | ⏳ Pendiente | Post-migración |
 | 3f — Marcar pagada + TRANSACCIONES | ⏳ Pendiente | Post-migración |
@@ -91,7 +91,8 @@ bruto = (días T + días D) × tarifa_diaria + horas_extras
 - `CAPTURA_EXTRAS` — horas extras
 - `CAPTURA_VIATICOS` — viáticos
 - `APROBACIONES_LOG` — log de aprobaciones / rechazos / reaperturas
-- (futuro) `NOMINA_RESULTADOS` — snapshot del cálculo
+- `NOMINA_RESULTADOS` — snapshot por empleado×proyecto del cálculo (Fase 3b)
+- `NOMINA_AGREGADOS` — totales por empleado por quincena, sin desglose por proyecto (Fase 3b)
 
 ## 8. Categorías de TRANSACCIONES (cuando se implemente 3f)
 
@@ -208,10 +209,11 @@ Tope IMSS quincenal: $4,410.56 para todos los IMSS.
 
 ## 16. Pendientes inmediatos
 
-1. **Fase 3b — Cálculo automático al aprobar** (próximo sprint)
-2. **Fase 3e — Excel + email a contadores** (después de 3b)
-3. **Validar quincena 22-may pagada con app** (validación operativa)
-4. **Performance:** lentitud reportada al cambiar pestañas. Quick win: spinner global más prominente. Optimización profunda: endpoint combinado `initSupervisorData`, cache local en sessionStorage. Esto último post-migración.
+> **Fase 3b backend cerrada el 18-may-2026** (v3.5). Endpoints `obtenerCalculoNomina` / `guardarCalculoNomina` / `invalidarCalculoNomina` desplegados; snapshot en NOMINA_RESULTADOS + NOMINA_AGREGADOS operativo.
+
+1. **Fase 3e — Excel + email a contadores** (siguiente)
+2. **Validar quincena 22-may pagada con app** (validación operativa)
+3. **Performance:** lentitud reportada al cambiar pestañas. Quick win: spinner global más prominente. Optimización profunda: endpoint combinado `initSupervisorData`, cache local en sessionStorage. Esto último post-migración.
 
 ## 17. Migración planeada
 
