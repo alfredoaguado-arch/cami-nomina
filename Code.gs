@@ -1,33 +1,42 @@
 /**
- * CAMI-Nomina v3.3
- * Módulo de nómina quincenal — Fases 1, 2, 3a y 3c.
+ * CAMI-Nomina v3.5
+ * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.5 (18-may-2026): Fase 3b completada — cálculo y persistencia de snapshot.
+ *   - Bloque 1 ✓ calcularNomina(quincenaId) función pura
+ *     · Devuelve dias_f, dias_b, excedente, id_captura por fila
+ *   - Bloque 2 ✓ Hojas NOMINA_RESULTADOS (21 cols) y NOMINA_AGREGADOS (11 cols)
+ *     · asegurarHojasNomina() crea hojas con encabezados idempotentemente
+ *   - Bloque 3 ✓ handleInvalidarCalculoNomina (borra snapshot, idempotente)
+ *     · Bloqueo PAGADA (hook para Fase 3f)
+ *     · Lógica extraída a _invalidarSnapshotInterno (reutilizable)
+ *   - Bloque 4 ✓ handleObtenerCalculoNomina (lee snapshot crudo)
+ *     · Devuelve calculado:bool, timestamp_calculo, estado_quincena
+ *   - Bloque 5 ✓ handleGuardarCalculoNomina (escribe snapshot único)
+ *     · Política: rechaza si ya existe (front debe invalidar primero)
+ *     · Atómico vía withLock, timestamp uniforme
+ *   - Bloque 6 ✓ handleReabrirCaptura y handleReabrirCapturaAdmin
+ *     · Bloqueo PAGADA + invalidación automática post-reapertura (best-effort)
+ *   - Bloque 7 ✓ Router doPost + appKeyForAction (3 endpoints cableados)
+ *     · invalidarCalculoNomina, obtenerCalculoNomina, guardarCalculoNomina
+ *     · Validación de permiso (nomina-aprobar O nomina-finanzas) en handlers
+ *   - Bloque 8 ✓ Bump a v3.5 + changelog
  *
  * v3.3 (11-may-2026): Fix Bug A — fecha de quincena adelantada.
- *   - handleQuincenaActual ahora devuelve la quincena anterior más reciente
+ *   - handleQuincenaActual devuelve la quincena anterior más reciente
  *     donde el supervisor tenga capturas en BORRADOR / ENVIADA / RECHAZADA.
- *     Si no hay pendientes, devuelve la calendárica.
  *   - Nuevo endpoint `quincenasCapturables` para construir el selector del front.
- *   - Mariana (admin) recibe el mismo trato en obtenerCapturaAdmin (cuando se
- *     llama sin quincena_id explícito).
+ *   - Mariana (admin) recibe el mismo trato en obtenerCapturaAdmin.
  *   - Límite: 3 quincenas hacia atrás.
  *
- * v3.2: Fix de race condition en escrituras (handleMarcarDia, handleGuardarExtra,
- *       handleGuardarViatico, handleAgregarEmpleadoCap). Nueva función auxiliar
- *       borrarDatosCaptura(capturaId) para limpiar capturas con datos corruptos.
- *
- * Fase 1: catálogo de empleados (CRUD)
- * Fase 2: quincenas, capturas por obra, días/extras/viáticos, conflictos
- * Fase 3a: panel de aprobación (nomina-aprobar)
- * Fase 3c: captura administrativa de Mariana (nomina-finanzas)
- *
- * Despliegue de v3.3 (sobre v3.2 existente):
- *   1) Pega este código completo en el Apps Script bound a CAMI-Nomina-DB
- *   2) Deploy → Manage deployments → ✏️ → Version: New version → Deploy
- *      (la URL no cambia)
- *   3) No requiere migración de datos.
+ * Funciones de mantenimiento conservadas:
+ *   - inicializarBD()       — Crear todas las hojas desde cero
+ *   - asegurarHojasNomina() — Asegura solo NOMINA_RESULTADOS y NOMINA_AGREGADOS
+ *   - autorizarPermisos()   — Forzar prompt OAuth tras crear el script
+ *   - limpiarCaptura(id)    — Limpia días/extras/viáticos de una captura, regresa a BORRADOR
  */
 
-const VERSION = '3.3';
+const VERSION = '3.5';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -43,7 +52,7 @@ const URL_CENTRAL = 'https://script.google.com/macros/s/AKfycbw8Ucc9J3_TQcsAR0tn
 const ID_TRANSACTION_DB = '1ivGPLJtb6mFH-Pj1js1t4c62hFAFlDigHO94M0ZZSso';
 const HOJA_PROYECTOS    = 'CAT_PROYECTOS';
 
-// CAMI Usuarios — fuente de obras asignadas por supervisor (mientras el central no propague esa columna)
+// CAMI Usuarios — fuente de obras asignadas por supervisor
 const ID_USUARIOS_DB = '1RlQ5UV7zOmSMSypBzck_AWgVDs_Y1_W5EZ1wOhOcmmI';
 const HOJA_USUARIOS  = 'Usuarios';
 
@@ -134,7 +143,7 @@ function doPost(e) {
       // ── Fase 2: quincenas / capturas ──
       case 'misProyectos':         return handleMisProyectos(data);
       case 'quincenaActual':       return handleQuincenaActual(data);
-      case 'quincenasCapturables': return handleQuincenasCapturables(data); // v3.3
+      case 'quincenasCapturables': return handleQuincenasCapturables(data);
       case 'listarQuincenas':      return handleListarQuincenas(data);
       case 'misCapturas':          return handleMisCapturas(data);
       case 'crearCaptura':         return handleCrearCaptura(data);
@@ -158,7 +167,10 @@ function doPost(e) {
       case 'rechazarCaptura':           return handleRechazarCaptura(data);
       case 'reabrirCaptura':            return handleReabrirCaptura(data);
       case 'detectarConflictos':        return handleDetectarConflictos(data);
-      case 'calcularNominaPreview': return handleCalcularNominaPreview(data);
+      case 'calcularNominaPreview':     return handleCalcularNominaPreview(data);
+      case 'invalidarCalculoNomina':    return handleInvalidarCalculoNomina(data);
+      case 'obtenerCalculoNomina':      return handleObtenerCalculoNomina(data);
+      case 'guardarCalculoNomina':      return handleGuardarCalculoNomina(data);
 
       // ── Fase 3c: captura administrativa (Mariana) ──
       case 'obtenerCapturaAdmin':       return handleObtenerCapturaAdmin(data);
@@ -181,12 +193,13 @@ function appKeyForAction(action) {
   const aprob = ['listarCapturasParaAprobar','obtenerCapturaParaAprobar','aprobarCaptura',
                'rechazarCaptura','reabrirCaptura','detectarConflictos','calcularNominaPreview'];
   const fin = ['obtenerCapturaAdmin','cerrarCapturaAdmin'];
-  // reabrirCapturaAdmin lo manejamos aparte: lo permite tanto nomina-finanzas como nomina-aprobar
+  // reabrirCapturaAdmin: validamos en el handler (nomina-finanzas O nomina-aprobar)
+  // invalidarCalculoNomina, obtenerCalculoNomina, guardarCalculoNomina:
+  //   validamos en el handler (nomina-finanzas O nomina-aprobar, mismo patrón)
   if (rh.indexOf(action) >= 0)    return 'nomina-rh';
   if (sup.indexOf(action) >= 0)   return 'nomina-supervisor';
   if (aprob.indexOf(action) >= 0) return 'nomina-aprobar';
   if (fin.indexOf(action) >= 0)   return 'nomina-finanzas';
-  // reabrirCapturaAdmin: validamos en el handler
   return null;
 }
 
@@ -311,6 +324,18 @@ function withLock(fn) {
       try { lock.releaseLock(); } catch(e) {}
     }
   }
+}
+
+function round2(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function normFecha(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, TZ, 'yyyy-MM-dd');
+  }
+  return String(v);
 }
 
 // ─── PROYECTOS (lee de CAMI TRANSACTION DB) ──────────────────────────────────
@@ -548,10 +573,6 @@ function quincenaParaFecha(fechaRef) {
   };
 }
 
-/**
- * v3.3: dado un quincena_id (jueves), devuelve la quincena N quincenas hacia
- * atrás (siempre jueves). Retorna objeto con id, fecha_inicio, fecha_fin, fecha_pago.
- */
 function quincenaAnterior(quincenaId, n) {
   if (!n) n = 1;
   const partes = String(quincenaId).split('-');
@@ -611,23 +632,6 @@ function asegurarQuincena(quincenaId, creadaPor) {
   }
 }
 
-function normFecha(v) {
-  if (v === null || v === undefined || v === '') return '';
-  if (Object.prototype.toString.call(v) === '[object Date]') {
-    return Utilities.formatDate(v, TZ, 'yyyy-MM-dd');
-  }
-  return String(v);
-}
-
-/**
- * v3.3: Cuenta las capturas pendientes (BORRADOR/ENVIADA/RECHAZADA) de un
- * usuario en una quincena dada. Acepta un filtro opcional de proyecto
- * (usado para distinguir admin de obras normales).
- *
- * @param {string} quincenaId
- * @param {string} supervisor  Nombre del usuario en el campo supervisor
- * @param {Object} opts        { proyecto: 'INDIRECTOS_OFICINA' | null, excluirProyectoAdmin: bool }
- */
 function contarPendientes(capturasRows, quincenaId, supervisor, opts) {
   opts = opts || {};
   const ESTADOS_PENDIENTES = ['BORRADOR','ENVIADA','RECHAZADA'];
@@ -641,19 +645,6 @@ function contarPendientes(capturasRows, quincenaId, supervisor, opts) {
   }).length;
 }
 
-/**
- * v3.3: nueva lógica de `handleQuincenaActual`.
- * Si el supervisor tiene capturas pendientes en quincenas anteriores
- * (dentro de las últimas MAX_QUINCENAS_ATRAS), devuelve la quincena anterior
- * más reciente con pendientes. Si no, devuelve la calendárica.
- *
- * Para distinguir Mariana (admin) de supervisores de obra, miramos qué app
- * tiene el usuario:
- *   - nomina-supervisor → contamos pendientes excluyendo PROYECTO_ADMIN
- *   - nomina-finanzas (Mariana sin nomina-supervisor) → contamos pendientes
- *     solo de PROYECTO_ADMIN
- *   - ambas (caso raro pero posible) → contamos cualquier pendiente
- */
 function handleQuincenaActual(data) {
   const ahora = new Date();
   const qActual = quincenaParaFecha(ahora);
@@ -668,7 +659,6 @@ function handleQuincenaActual(data) {
   let optsConteo = { excluirProyectoAdmin: !esFin && esSup };
   if (esFin && !esSup) optsConteo = { proyecto: PROYECTO_ADMIN };
 
-  // Buscar la quincena anterior más reciente (dentro del límite) con pendientes
   let qElegida = qActual;
   for (let i = 1; i <= MAX_QUINCENAS_ATRAS; i++) {
     const qPrev = quincenaAnterior(qActual.id, i);
@@ -676,11 +666,10 @@ function handleQuincenaActual(data) {
     if (pend > 0) {
       asegurarQuincena(qPrev.id, supervisor);
       qElegida = qPrev;
-      break; // tomamos la más reciente con pendientes
+      break;
     }
   }
 
-  // Construir respuesta. Re-leer del sheet para obtener el estado real
   let creada = asegurarQuincena(qElegida.id, supervisor);
   creada = {
     id:           normFecha(creada.id) || qElegida.id,
@@ -694,18 +683,10 @@ function handleQuincenaActual(data) {
     ok: true,
     quincena: creada,
     es_actual:  creada.id === qActual.id,
-    actual_id:  qActual.id   // siempre incluimos la calendárica de hoy para que el front decida
+    actual_id:  qActual.id
   });
 }
 
-/**
- * v3.3: Devuelve la lista de quincenas capturables para el usuario.
- * Incluye:
- *   - La quincena calendárica de hoy (siempre)
- *   - Hasta MAX_QUINCENAS_ATRAS hacia atrás donde el usuario tenga pendientes
- * Ordenadas de más vieja a más nueva.
- * Cada entrada trae { id, fecha_inicio, fecha_fin, fecha_pago, pendientes, es_default, es_actual }
- */
 function handleQuincenasCapturables(data) {
   const ahora = new Date();
   const qActual = quincenaParaFecha(ahora);
@@ -718,7 +699,6 @@ function handleQuincenasCapturables(data) {
 
   const capturasRows = rowsToObjects(getSheet(HOJAS.CAPTURAS).getDataRange().getValues());
 
-  // Recopilar quincenas anteriores con pendientes
   const anteriores = [];
   for (let i = 1; i <= MAX_QUINCENAS_ATRAS; i++) {
     const qPrev = quincenaAnterior(qActual.id, i);
@@ -735,7 +715,6 @@ function handleQuincenasCapturables(data) {
     }
   }
 
-  // Quincena calendárica actual
   const pendActuales = contarPendientes(capturasRows, qActual.id, supervisor, optsConteo);
   const itemActual = {
     id: qActual.id,
@@ -746,14 +725,11 @@ function handleQuincenasCapturables(data) {
     es_actual:    true
   };
 
-  // Default: la más reciente con pendientes; si no hay, la actual
   let defaultId = qActual.id;
   if (anteriores.length > 0) {
-    // anteriores van de más reciente (i=1) a más vieja (i=MAX); la primera es la más reciente
     defaultId = anteriores[0].id;
   }
 
-  // Ordenar todas de más vieja a más nueva
   const lista = anteriores.slice().reverse().concat([itemActual]);
   lista.forEach(function (q) { q.es_default = (q.id === defaultId); });
 
@@ -794,7 +770,6 @@ function handleMisCapturas(data) {
   capturas = capturas.filter(function (c) {
     if (c.supervisor !== supervisor) return false;
     if (quincenaId && c.quincena_id !== quincenaId) return false;
-    // v3.3: las capturas admin no aparecen en "mis capturas" del supervisor
     if (c.proyecto === PROYECTO_ADMIN) return false;
     return true;
   });
@@ -1380,7 +1355,7 @@ function handleAprobarCaptura(data) {
   const colComent    = headers.indexOf('comentario_rechazo');
 
   if (colAprobador < 0) {
-    return jsonResp({ ok: false, error: 'columna aprobada_por no existe — corre migrarAprobada() en el Apps Script' });
+    return jsonResp({ ok: false, error: 'columna aprobada_por no existe' });
   }
 
   for (let i = 1; i < rows.length; i++) {
@@ -1442,6 +1417,7 @@ function handleReabrirCaptura(data) {
   const colEstado    = headers.indexOf('estado');
   const colAprobador = headers.indexOf('aprobada_por');
   const colFecha     = headers.indexOf('fecha_aprobacion');
+  const colQuincena  = headers.indexOf('quincena_id');
 
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(capturaId)) {
@@ -1449,12 +1425,55 @@ function handleReabrirCaptura(data) {
       if (estado !== 'APROBADA') {
         return jsonResp({ ok: false, error: 'solo capturas APROBADAS pueden reabrirse, está en ' + estado });
       }
+
+      const quincenaId = normFecha(rows[i][colQuincena]);
+
+      // Bloqueo: quincena PAGADA es inamovible
+      const shQ = getSheet(HOJAS.QUINCENAS);
+      if (shQ && quincenaId) {
+        const qRows = shQ.getDataRange().getValues();
+        const headersQ = qRows[0];
+        const colEstadoQ = headersQ.indexOf('estado');
+        for (let j = 1; j < qRows.length; j++) {
+          if (normFecha(qRows[j][0]) === quincenaId) {
+            const estadoQ = colEstadoQ >= 0 ? qRows[j][colEstadoQ] : '';
+            if (estadoQ === 'PAGADA') {
+              return jsonResp({
+                ok: false,
+                error: 'no se puede reabrir: la quincena ' + quincenaId + ' ya fue PAGADA'
+              });
+            }
+            break;
+          }
+        }
+      }
+
+      // Paso 1: reabrir captura
       sh.getRange(i+1, colEstado+1).setValue('BORRADOR');
       if (colAprobador >= 0) sh.getRange(i+1, colAprobador+1).setValue('');
       if (colFecha >= 0)     sh.getRange(i+1, colFecha+1).setValue('');
 
       logAprobacion(capturaId, 'REABRIR', aprobador, motivo);
-      return jsonResp({ ok: true });
+
+      // Paso 2: invalidar snapshot si existe (best-effort, no rompe si falla)
+      let snapshotInvalidado = false;
+      let filasBorradas = { resultados: 0, agregados: 0 };
+      let warningInvalidacion = null;
+      try {
+        asegurarHojasNomina();
+        filasBorradas = withLock(function () {
+          return _invalidarSnapshotInterno(quincenaId);
+        });
+        snapshotInvalidado = (filasBorradas.resultados + filasBorradas.agregados) > 0;
+      } catch (err) {
+        warningInvalidacion = 'No se pudo invalidar snapshot automáticamente: ' + err.toString() +
+                              '. Invalida manualmente la quincena ' + quincenaId + '.';
+        Logger.log('handleReabrirCaptura: ' + warningInvalidacion);
+      }
+
+      const resp = { ok: true, snapshot_invalidado: snapshotInvalidado, filas_borradas: filasBorradas };
+      if (warningInvalidacion) resp.warning = warningInvalidacion;
+      return jsonResp(resp);
     }
   }
   return jsonResp({ ok: false, error: 'captura no encontrada' });
@@ -1540,11 +1559,6 @@ function logAprobacion(capturaId, accion, usuario, comentario) {
 // ═══ FASE 3c: CAPTURA ADMINISTRATIVA (nomina-finanzas)                       ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * v3.3: Si no se pasa quincena_id, aplicamos la misma lógica de quincenaActual:
- * si hay captura admin BORRADOR/ENVIADA/RECHAZADA en quincenas anteriores
- * (dentro del límite), devolvemos esa; si no, la calendárica.
- */
 function handleObtenerCapturaAdmin(data) {
   const usuario = userName(data);
   let quincenaId = data.quincena_id;
@@ -1553,7 +1567,6 @@ function handleObtenerCapturaAdmin(data) {
     const qActual = quincenaParaFecha(new Date());
     const capturasRows = rowsToObjects(getSheet(HOJAS.CAPTURAS).getDataRange().getValues());
 
-    // Para admin: misma lógica pero filtrando por PROYECTO_ADMIN
     quincenaId = qActual.id;
     for (let i = 1; i <= MAX_QUINCENAS_ATRAS; i++) {
       const qPrev = quincenaAnterior(qActual.id, i);
@@ -1685,6 +1698,7 @@ function handleReabrirCapturaAdmin(data) {
   const colProyecto  = headers.indexOf('proyecto');
   const colAprobador = headers.indexOf('aprobada_por');
   const colFecha     = headers.indexOf('fecha_aprobacion');
+  const colQuincena  = headers.indexOf('quincena_id');
 
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(capturaId)) {
@@ -1695,29 +1709,677 @@ function handleReabrirCapturaAdmin(data) {
       if (estado !== 'CERRADA') {
         return jsonResp({ ok: false, error: 'solo CERRADA puede reabrirse, está en ' + estado });
       }
+
+      const quincenaId = normFecha(rows[i][colQuincena]);
+
+      // Bloqueo: quincena PAGADA es inamovible
+      const shQ = getSheet(HOJAS.QUINCENAS);
+      if (shQ && quincenaId) {
+        const qRows = shQ.getDataRange().getValues();
+        const headersQ = qRows[0];
+        const colEstadoQ = headersQ.indexOf('estado');
+        for (let j = 1; j < qRows.length; j++) {
+          if (normFecha(qRows[j][0]) === quincenaId) {
+            const estadoQ = colEstadoQ >= 0 ? qRows[j][colEstadoQ] : '';
+            if (estadoQ === 'PAGADA') {
+              return jsonResp({
+                ok: false,
+                error: 'no se puede reabrir: la quincena ' + quincenaId + ' ya fue PAGADA'
+              });
+            }
+            break;
+          }
+        }
+      }
+
+      // Paso 1: reabrir captura admin
       sh.getRange(i+1, colEstado+1).setValue('BORRADOR');
       if (colAprobador >= 0) sh.getRange(i+1, colAprobador+1).setValue('');
       if (colFecha >= 0)     sh.getRange(i+1, colFecha+1).setValue('');
 
       logAprobacion(capturaId, 'REABRIR_ADMIN', usuario, motivo);
-      return jsonResp({ ok: true });
+
+      // Paso 2: invalidar snapshot si existe (best-effort)
+      let snapshotInvalidado = false;
+      let filasBorradas = { resultados: 0, agregados: 0 };
+      let warningInvalidacion = null;
+      try {
+        asegurarHojasNomina();
+        filasBorradas = withLock(function () {
+          return _invalidarSnapshotInterno(quincenaId);
+        });
+        snapshotInvalidado = (filasBorradas.resultados + filasBorradas.agregados) > 0;
+      } catch (err) {
+        warningInvalidacion = 'No se pudo invalidar snapshot automáticamente: ' + err.toString() +
+                              '. Invalida manualmente la quincena ' + quincenaId + '.';
+        Logger.log('handleReabrirCapturaAdmin: ' + warningInvalidacion);
+      }
+
+      const resp = { ok: true, snapshot_invalidado: snapshotInvalidado, filas_borradas: filasBorradas };
+      if (warningInvalidacion) resp.warning = warningInvalidacion;
+      return jsonResp(resp);
     }
   }
   return jsonResp({ ok: false, error: 'captura no encontrada' });
 }
 
-// ─── INICIALIZACIÓN ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ FASE 3b — Cálculo de nómina                                             ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Modelo:
+//   - bruto = (T + D) × tarifa + extras + viáticos
+//   - Tope IMSS $4,410.56 quincenal por empleado IMSS
+//   - CAMI paga el tope vía NOMINA_DIRECTO (proporcional a días por proyecto)
+//   - Contadores dispersan el excedente (no se registra en TRANSACCIONES)
+//   - NO_IMSS: CAMI paga TODO vía NOMINA_DIRECTO
+//   - NOMINA a contadores: bruto_proyecto × 1.06 (comisión 6% adentro)
+//   - REINTEGRO: 1 fila por quincena, proyecto=TRANSITO, suma topes IMSS
+//
+// Endpoints (todos cableados en doPost desde Bloque 7):
+//   - calcularNominaPreview — preview en vivo, no escribe
+//   - invalidarCalculoNomina — borra snapshot, idempotente (Bloque 3)
+//   - obtenerCalculoNomina — lee snapshot crudo (Bloque 4)
+//   - guardarCalculoNomina — escribe snapshot único (Bloque 5)
 
 /**
- * Asegura que existan las hojas NOMINA_RESULTADOS y NOMINA_AGREGADOS con
- * sus headers correctos. Idempotente y barato: si ambas existen ya con
- * headers OK, no escribe nada y retorna.
+ * Función pura de cálculo. Lee capturas APROBADA y CERRADA de la quincena,
+ * aplica el modelo y devuelve el desglose completo. NO escribe en sheets.
  *
- * Pensado para llamarse al inicio de endpoints que toquen estas hojas
- * (Bloques 4-5 de Fase 3b). También se llama desde inicializarBD().
+ * Reutilizada por handleCalcularNominaPreview (preview) y handleGuardarCalculoNomina
+ * (snapshot inmutable).
  *
- * Si una hoja existe pero los headers no coinciden, escribe warning con
- * Logger.log (esperados vs encontrados). No auto-corrige ni lanza.
+ * Cada fila de `resultados` incluye:
+ *   id_captura, empleado_id, empleado_nombre, empleado_tipo, proyecto,
+ *   dias_t, dias_d, dias_f, dias_b, dias_pagables, tarifa_diaria,
+ *   monto_salario, monto_extras, monto_viaticos, bruto_proyecto,
+ *   tope_imss_aplicado, nomina_directo, excedente, comision_6pct, total_a_contadores
+ */
+function calcularNomina(quincenaId) {
+  if (!quincenaId) return { ok: false, error: 'falta quincena_id' };
+
+  const TOPE_IMSS = 4410.56;
+  const COMISION = 0.06;
+  const PROYECTO_REINTEGRO = 'TRANSITO';
+
+  // 1. Leer capturas APROBADA y CERRADA de esta quincena
+  const capturasAll = rowsToObjects(getSheet(HOJAS.CAPTURAS).getDataRange().getValues());
+  const capturasIncluidas = capturasAll.filter(function (c) {
+    return normFecha(c.quincena_id) === quincenaId &&
+           (c.estado === 'APROBADA' || c.estado === 'CERRADA');
+  });
+
+  const capturasOmitidas = capturasAll.filter(function (c) {
+    return normFecha(c.quincena_id) === quincenaId &&
+           c.estado !== 'APROBADA' && c.estado !== 'CERRADA';
+  });
+
+  if (capturasIncluidas.length === 0) {
+    return {
+      ok: true,
+      quincena_id: quincenaId,
+      warnings: ['No hay capturas APROBADA ni CERRADA en esta quincena'],
+      capturas_omitidas: capturasOmitidas.map(function (c) {
+        return { proyecto: c.proyecto, supervisor: c.supervisor, estado: c.estado };
+      }),
+      resultados: [],
+      agregados_proyecto: [],
+      filas_nomina_directo: [],
+      totales: {}
+    };
+  }
+
+  const idsIncluidas = {};
+  capturasIncluidas.forEach(function (c) { idsIncluidas[c.id] = c; });
+
+  // 2. Leer días, extras, viáticos solo de las capturas incluidas
+  const dias = rowsToObjects(getSheet(HOJAS.CAPTURA_DIAS).getDataRange().getValues())
+    .filter(function (d) { return idsIncluidas[d.captura_id]; });
+  const extras = rowsToObjects(getSheet(HOJAS.CAPTURA_EXTRAS).getDataRange().getValues())
+    .filter(function (e) { return idsIncluidas[e.captura_id]; });
+  const viaticos = rowsToObjects(getSheet(HOJAS.CAPTURA_VIATICOS).getDataRange().getValues())
+    .filter(function (v) { return idsIncluidas[v.captura_id]; });
+
+  // 3. Catálogo de empleados
+  const empAll = rowsToObjects(getSheet(HOJAS.EMPLEADOS).getDataRange().getValues());
+  const empById = {};
+  empAll.forEach(function (e) { empById[e.id] = e; });
+
+  // 4. Agrupar por (empleado, proyecto)
+  const agregado = {};
+  function keyEP(empId, proy) { return empId + '|' + proy; }
+
+  dias.forEach(function (d) {
+    const marca = String(d.marca || '').toUpperCase();
+    if (['T','D','F','B'].indexOf(marca) < 0) return;
+    const offset = parseInt(d.dia_offset, 10);
+    if (isNaN(offset) || offset < 0 || offset > 13) return;
+    const cap = idsIncluidas[d.captura_id];
+    if (!cap) return;
+    const emp = empById[d.empleado_id];
+    if (!emp) return;
+    const tarifa = parseFloat(emp.tarifa_diaria || 0);
+    const k = keyEP(d.empleado_id, cap.proyecto);
+    if (!agregado[k]) {
+      agregado[k] = {
+        empleado_id: d.empleado_id, proyecto: cap.proyecto,
+        dias_t: 0, dias_d: 0, dias_f: 0, dias_b: 0, dias_pagables: 0,
+        monto_salario: 0, monto_extras: 0, monto_viaticos: 0,
+        id_captura: cap.id
+      };
+    }
+    if (marca === 'T') {
+      agregado[k].dias_t++;
+      agregado[k].dias_pagables++;
+      agregado[k].monto_salario += tarifa;
+    } else if (marca === 'D') {
+      agregado[k].dias_d++;
+      agregado[k].dias_pagables++;
+      agregado[k].monto_salario += tarifa;
+    } else if (marca === 'F') {
+      agregado[k].dias_f++;
+    } else if (marca === 'B') {
+      agregado[k].dias_b++;
+    }
+  });
+
+  extras.forEach(function (e) {
+    const cap = idsIncluidas[e.captura_id];
+    if (!cap) return;
+    const monto = parseFloat(e.monto || 0);
+    if (!monto) return;
+    const k = keyEP(e.empleado_id, cap.proyecto);
+    if (!agregado[k]) {
+      agregado[k] = {
+        empleado_id: e.empleado_id, proyecto: cap.proyecto,
+        dias_t: 0, dias_d: 0, dias_f: 0, dias_b: 0, dias_pagables: 0,
+        monto_salario: 0, monto_extras: 0, monto_viaticos: 0,
+        id_captura: cap.id
+      };
+    }
+    agregado[k].monto_extras += monto;
+  });
+
+  viaticos.forEach(function (v) {
+    const cap = idsIncluidas[v.captura_id];
+    if (!cap) return;
+    const monto = parseFloat(v.monto || 0);
+    if (!monto) return;
+    const k = keyEP(v.empleado_id, cap.proyecto);
+    if (!agregado[k]) {
+      agregado[k] = {
+        empleado_id: v.empleado_id, proyecto: cap.proyecto,
+        dias_t: 0, dias_d: 0, dias_f: 0, dias_b: 0, dias_pagables: 0,
+        monto_salario: 0, monto_extras: 0, monto_viaticos: 0,
+        id_captura: cap.id
+      };
+    }
+    agregado[k].monto_viaticos += monto;
+  });
+
+  // 5. Calcular bruto por (empleado, proyecto) y totales por empleado
+  const totalesEmpleado = {};
+  Object.keys(agregado).forEach(function (k) {
+    const a = agregado[k];
+    a.bruto_proyecto = a.monto_salario + a.monto_extras + a.monto_viaticos;
+    if (!totalesEmpleado[a.empleado_id]) {
+      totalesEmpleado[a.empleado_id] = { dias_pagables: 0, bruto_total: 0 };
+    }
+    totalesEmpleado[a.empleado_id].dias_pagables += a.dias_pagables;
+    totalesEmpleado[a.empleado_id].bruto_total += a.bruto_proyecto;
+  });
+
+  // 6. Aplicar tope IMSS y calcular NOMINA_DIRECTO por (empleado, proyecto)
+  const filasNominaDirecto = [];
+  Object.keys(agregado).forEach(function (k) {
+    const a = agregado[k];
+    const emp = empById[a.empleado_id];
+    if (!emp) return;
+    const tipo = emp.tipo;
+    const totales = totalesEmpleado[a.empleado_id];
+    let ndEmpleado;
+    if (tipo === 'IMSS') {
+      ndEmpleado = Math.min(totales.bruto_total, TOPE_IMSS);
+    } else {
+      ndEmpleado = totales.bruto_total;
+    }
+    const proporcion = totales.dias_pagables > 0 ? a.dias_pagables / totales.dias_pagables : 0;
+    const ndProyecto = ndEmpleado * proporcion;
+    a.tope_imss_aplicado = (tipo === 'IMSS') ? ndEmpleado * proporcion : 0;
+    a.nomina_directo = ndProyecto;
+    a.comision_6pct = a.bruto_proyecto * COMISION;
+    a.total_a_contadores = a.bruto_proyecto * (1 + COMISION);
+
+    filasNominaDirecto.push({
+      empleado_id: a.empleado_id,
+      empleado_nombre: emp.nombre,
+      empleado_tipo: tipo,
+      proyecto: a.proyecto,
+      monto: round2(ndProyecto)
+    });
+  });
+
+  // 7. Construir resultados detallados (incluye id_captura, dias_f, dias_b, excedente)
+  const resultados = Object.keys(agregado).map(function (k) {
+    const a = agregado[k];
+    const emp = empById[a.empleado_id];
+    return {
+      id_captura: a.id_captura || '',
+      empleado_id: a.empleado_id,
+      empleado_nombre: emp ? emp.nombre : '(empleado #' + a.empleado_id + ')',
+      empleado_tipo: emp ? emp.tipo : '',
+      proyecto: a.proyecto,
+      dias_t: a.dias_t,
+      dias_d: a.dias_d,
+      dias_f: a.dias_f,
+      dias_b: a.dias_b,
+      dias_pagables: a.dias_pagables,
+      tarifa_diaria: emp ? parseFloat(emp.tarifa_diaria || 0) : 0,
+      monto_salario: round2(a.monto_salario),
+      monto_extras: round2(a.monto_extras),
+      monto_viaticos: round2(a.monto_viaticos),
+      bruto_proyecto: round2(a.bruto_proyecto),
+      tope_imss_aplicado: round2(a.tope_imss_aplicado),
+      nomina_directo: round2(a.nomina_directo),
+      excedente: round2(a.bruto_proyecto - a.nomina_directo),
+      comision_6pct: round2(a.comision_6pct),
+      total_a_contadores: round2(a.total_a_contadores)
+    };
+  });
+
+  // 8. Agregados por proyecto
+  const porProyecto = {};
+  resultados.forEach(function (r) {
+    if (!porProyecto[r.proyecto]) {
+      porProyecto[r.proyecto] = {
+        proyecto: r.proyecto, num_empleados_set: {},
+        bruto_total: 0, comision_6pct: 0, total_a_contadores: 0,
+        nomina_directo_total: 0, dias_t: 0, dias_d: 0
+      };
+    }
+    const p = porProyecto[r.proyecto];
+    p.num_empleados_set[r.empleado_id] = true;
+    p.bruto_total += r.bruto_proyecto;
+    p.comision_6pct += r.comision_6pct;
+    p.total_a_contadores += r.total_a_contadores;
+    p.nomina_directo_total += r.nomina_directo;
+    p.dias_t += r.dias_t;
+    p.dias_d += r.dias_d;
+  });
+  const agregadosProyecto = Object.keys(porProyecto).map(function (k) {
+    const p = porProyecto[k];
+    return {
+      proyecto: p.proyecto,
+      num_empleados: Object.keys(p.num_empleados_set).length,
+      dias_t: p.dias_t,
+      dias_d: p.dias_d,
+      bruto_total: round2(p.bruto_total),
+      comision_6pct: round2(p.comision_6pct),
+      total_a_contadores: round2(p.total_a_contadores),
+      nomina_directo_total: round2(p.nomina_directo_total)
+    };
+  });
+  agregadosProyecto.sort(function (a, b) { return String(a.proyecto).localeCompare(String(b.proyecto)); });
+
+  // 9. Totales globales
+  let brutoTotal = 0, ndTotal = 0, topeImssTotal = 0;
+  resultados.forEach(function (r) {
+    brutoTotal += r.bruto_proyecto;
+    ndTotal += r.nomina_directo;
+    topeImssTotal += r.tope_imss_aplicado;
+  });
+
+  const totales = {
+    bruto_total: round2(brutoTotal),
+    comision_6pct: round2(brutoTotal * COMISION),
+    total_a_contadores: round2(brutoTotal * (1 + COMISION)),
+    nomina_directo_total: round2(ndTotal),
+    reintegro_total: round2(topeImssTotal),
+    reintegro_proyecto: PROYECTO_REINTEGRO,
+    num_empleados: Object.keys(totalesEmpleado).length,
+    num_proyectos: Object.keys(porProyecto).length
+  };
+
+  // 10. Warnings
+  const warnings = [];
+  if (capturasOmitidas.length > 0) {
+    capturasOmitidas.forEach(function (c) {
+      warnings.push('Captura ' + c.proyecto + ' (' + c.supervisor + ') NO incluida — estado ' + c.estado);
+    });
+  }
+
+  return {
+    ok: true,
+    quincena_id: quincenaId,
+    capturas_incluidas: capturasIncluidas.length,
+    capturas_omitidas: capturasOmitidas.length,
+    warnings: warnings,
+    resultados: resultados,
+    agregados_proyecto: agregadosProyecto,
+    filas_nomina_directo: filasNominaDirecto,
+    totales: totales
+  };
+}
+
+/**
+ * Wrapper HTTP — preview en vivo. La lógica vive en calcularNomina().
+ */
+function handleCalcularNominaPreview(data) {
+  return jsonResp(calcularNomina(data.quincena_id));
+}
+
+/**
+ * Función interna de borrado de snapshot. NO valida permisos ni estado PAGADA
+ * — el caller debe haber validado ya. Devuelve { resultados: N, agregados: M }.
+ *
+ * Usada por:
+ *   - handleInvalidarCalculoNomina (endpoint público, valida permiso y PAGADA)
+ *   - handleReabrirCaptura / handleReabrirCapturaAdmin (post-reapertura)
+ *
+ * Debe llamarse dentro de un withLock por el caller.
+ */
+function _invalidarSnapshotInterno(quincenaId) {
+  let borradasResultados = 0;
+  let borradasAgregados = 0;
+
+  // NOMINA_RESULTADOS: id_quincena en columna 1
+  const shR = getSheet(HOJAS.NOMINA_RESULTADOS);
+  if (shR && shR.getLastRow() > 1) {
+    const rows = shR.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (normFecha(rows[i][1]) === quincenaId) {
+        shR.deleteRow(i + 1);
+        borradasResultados++;
+      }
+    }
+  }
+
+  // NOMINA_AGREGADOS: id_quincena en columna 0
+  const shA = getSheet(HOJAS.NOMINA_AGREGADOS);
+  if (shA && shA.getLastRow() > 1) {
+    const rows = shA.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (normFecha(rows[i][0]) === quincenaId) {
+        shA.deleteRow(i + 1);
+        borradasAgregados++;
+      }
+    }
+  }
+
+  return { resultados: borradasResultados, agregados: borradasAgregados };
+}
+
+/**
+ * Bloque 3 — Endpoint público: invalida el snapshot de cálculo de una quincena.
+ *
+ * Idempotente: si no hay filas, retorna éxito con contadores en 0.
+ * Bloqueo: si la quincena está PAGADA (Fase 3f), no se permite invalidar.
+ * Permiso: nomina-aprobar O nomina-finanzas (validado en handler).
+ */
+function handleInvalidarCalculoNomina(data) {
+  const quincenaId = String(data.quincena_id || '').trim();
+  if (!quincenaId) return jsonResp({ ok: false, error: 'falta quincena_id' });
+
+  if (!userTieneApp(data, 'nomina-aprobar') && !userTieneApp(data, 'nomina-finanzas')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-aprobar o nomina-finanzas)' });
+  }
+
+  asegurarHojasNomina();
+
+  // Bloqueo: quincena PAGADA
+  const shQ = getSheet(HOJAS.QUINCENAS);
+  if (shQ) {
+    const qRows = shQ.getDataRange().getValues();
+    const headersQ = qRows[0];
+    const colEstadoQ = headersQ.indexOf('estado');
+    for (let i = 1; i < qRows.length; i++) {
+      if (normFecha(qRows[i][0]) === quincenaId) {
+        const estadoQ = colEstadoQ >= 0 ? qRows[i][colEstadoQ] : '';
+        if (estadoQ === 'PAGADA') {
+          return jsonResp({
+            ok: false,
+            error: 'no se puede invalidar: la quincena ' + quincenaId + ' ya fue PAGADA'
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  return withLock(function () {
+    const filasBorradas = _invalidarSnapshotInterno(quincenaId);
+    return jsonResp({ ok: true, filasBorradas: filasBorradas });
+  });
+}
+
+/**
+ * Bloque 4 — Obtiene el snapshot guardado de una quincena.
+ *
+ * Solo lectura. Devuelve filas crudas + estado de la quincena.
+ * Si no hay snapshot, retorna calculado: false.
+ * Permiso: nomina-aprobar O nomina-finanzas (validado en handler).
+ */
+function handleObtenerCalculoNomina(data) {
+  const quincenaId = String(data.quincena_id || '').trim();
+  if (!quincenaId) return jsonResp({ ok: false, error: 'falta quincena_id' });
+
+  if (!userTieneApp(data, 'nomina-aprobar') && !userTieneApp(data, 'nomina-finanzas')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-aprobar o nomina-finanzas)' });
+  }
+
+  asegurarHojasNomina();
+
+  // Estado de la quincena
+  let estadoQuincena = null;
+  const shQ = getSheet(HOJAS.QUINCENAS);
+  if (shQ) {
+    const qRows = shQ.getDataRange().getValues();
+    const headersQ = qRows[0];
+    const colEstadoQ = headersQ.indexOf('estado');
+    for (let i = 1; i < qRows.length; i++) {
+      if (normFecha(qRows[i][0]) === quincenaId) {
+        estadoQuincena = colEstadoQ >= 0 ? qRows[i][colEstadoQ] : null;
+        break;
+      }
+    }
+  }
+
+  // NOMINA_RESULTADOS: id_quincena en columna 1
+  const resultados = [];
+  const shR = getSheet(HOJAS.NOMINA_RESULTADOS);
+  if (shR && shR.getLastRow() > 1) {
+    const rows = shR.getDataRange().getValues();
+    const headers = rows[0];
+    for (let i = 1; i < rows.length; i++) {
+      if (normFecha(rows[i][1]) === quincenaId) {
+        const obj = {};
+        headers.forEach(function (h, j) { obj[h] = rows[i][j]; });
+        resultados.push(obj);
+      }
+    }
+  }
+
+  // NOMINA_AGREGADOS: id_quincena en columna 0
+  const agregados = [];
+  const shA = getSheet(HOJAS.NOMINA_AGREGADOS);
+  if (shA && shA.getLastRow() > 1) {
+    const rows = shA.getDataRange().getValues();
+    const headers = rows[0];
+    for (let i = 1; i < rows.length; i++) {
+      if (normFecha(rows[i][0]) === quincenaId) {
+        const obj = {};
+        headers.forEach(function (h, j) { obj[h] = rows[i][j]; });
+        agregados.push(obj);
+      }
+    }
+  }
+
+  const calculado = resultados.length > 0;
+  const timestampCalculo = calculado ? resultados[0].timestamp_calculo : null;
+
+  return jsonResp({
+    ok: true,
+    quincena_id: quincenaId,
+    calculado: calculado,
+    timestamp_calculo: timestampCalculo,
+    estado_quincena: estadoQuincena,
+    resultados: resultados,
+    agregados: agregados
+  });
+}
+
+/**
+ * Bloque 5 — Guarda el snapshot de cálculo de una quincena.
+ *
+ * Política snapshot único: rechaza si ya existe (front debe invalidar primero).
+ * Bloqueo: quincena PAGADA no se puede guardar.
+ * Atómico: escribe R y A en un solo lock, con setValues() por bloques.
+ * Permiso: nomina-aprobar O nomina-finanzas.
+ */
+function handleGuardarCalculoNomina(data) {
+  const quincenaId = String(data.quincena_id || '').trim();
+  if (!quincenaId) return jsonResp({ ok: false, error: 'falta quincena_id' });
+
+  if (!userTieneApp(data, 'nomina-aprobar') && !userTieneApp(data, 'nomina-finanzas')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-aprobar o nomina-finanzas)' });
+  }
+
+  asegurarHojasNomina();
+
+  // Bloqueo: quincena PAGADA
+  const shQ = getSheet(HOJAS.QUINCENAS);
+  if (shQ) {
+    const qRows = shQ.getDataRange().getValues();
+    const headersQ = qRows[0];
+    const colEstadoQ = headersQ.indexOf('estado');
+    for (let i = 1; i < qRows.length; i++) {
+      if (normFecha(qRows[i][0]) === quincenaId) {
+        const estadoQ = colEstadoQ >= 0 ? qRows[i][colEstadoQ] : '';
+        if (estadoQ === 'PAGADA') {
+          return jsonResp({
+            ok: false,
+            error: 'no se puede guardar: la quincena ' + quincenaId + ' ya fue PAGADA'
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  return withLock(function () {
+    const shR = getSheet(HOJAS.NOMINA_RESULTADOS);
+    const shA = getSheet(HOJAS.NOMINA_AGREGADOS);
+
+    // Verificación dentro del lock: snapshot único
+    if (shR && shR.getLastRow() > 1) {
+      const rowsR = shR.getDataRange().getValues();
+      for (let i = 1; i < rowsR.length; i++) {
+        if (normFecha(rowsR[i][1]) === quincenaId) {
+          return jsonResp({
+            ok: false,
+            error: 'ya existe snapshot para ' + quincenaId + '. Invalida primero con invalidarCalculoNomina.'
+          });
+        }
+      }
+    }
+
+    // Ejecutar cálculo
+    const calc = calcularNomina(quincenaId);
+    if (!calc.ok) {
+      return jsonResp({ ok: false, error: 'error al calcular: ' + (calc.error || 'desconocido') });
+    }
+
+    // Sin filas para guardar
+    if (!calc.resultados || calc.resultados.length === 0) {
+      return jsonResp({
+        ok: true,
+        quincena_id: quincenaId,
+        filasGuardadas: { resultados: 0, agregados: 0 },
+        timestamp_calculo: null,
+        warnings: calc.warnings || ['Sin capturas APROBADA/CERRADA para calcular']
+      });
+    }
+
+    const timestampCalculo = nowStr();
+
+    // Construir filas para NOMINA_RESULTADOS (21 columnas)
+    // ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo']
+    const proximoIdR = nextId(shR, 0);
+    const filasR = calc.resultados.map(function (r, idx) {
+      return [
+        proximoIdR + idx,            // id_resultado
+        quincenaId,                  // id_quincena
+        r.id_captura,                // id_captura
+        r.empleado_id,               // id_empleado
+        r.proyecto,                  // proyecto
+        r.dias_t,                    // dias_t
+        r.dias_d,                    // dias_d
+        r.dias_f,                    // dias_f
+        r.dias_b,                    // dias_b
+        r.dias_pagables,             // dias_pagables
+        r.tarifa_diaria,             // tarifa_diaria
+        r.monto_salario,             // bruto_base
+        r.monto_extras,              // extras
+        r.monto_viaticos,            // viaticos
+        r.bruto_proyecto,            // bruto_total
+        r.tope_imss_aplicado,        // tope_imss_aplicable
+        r.nomina_directo,            // nomina_directo
+        r.excedente,                 // excedente
+        r.comision_6pct,             // comision
+        r.total_a_contadores,        // total_neto
+        timestampCalculo             // timestamp_calculo
+      ];
+    });
+
+    // Construir filas para NOMINA_AGREGADOS (11 columnas)
+    // ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo']
+    const filasA = calc.agregados_proyecto.map(function (a) {
+      const totalExcedente = round2(a.bruto_total - a.nomina_directo_total);
+      return [
+        quincenaId,                  // id_quincena
+        a.proyecto,                  // proyecto
+        a.num_empleados,             // total_empleados
+        a.dias_t,                    // total_dias_t
+        a.dias_d,                    // total_dias_d
+        a.bruto_total,               // total_bruto
+        a.nomina_directo_total,      // total_nomina_directo
+        totalExcedente,              // total_excedente
+        a.comision_6pct,             // total_comision
+        a.total_a_contadores,        // monto_nomina_transaccion
+        timestampCalculo             // timestamp_calculo
+      ];
+    });
+
+    // Escribir NOMINA_RESULTADOS primero (bloque)
+    if (filasR.length > 0) {
+      const startRowR = shR.getLastRow() + 1;
+      shR.getRange(startRowR, 1, filasR.length, filasR[0].length).setValues(filasR);
+    }
+
+    // Si R completó, escribir NOMINA_AGREGADOS
+    if (filasA.length > 0) {
+      const startRowA = shA.getLastRow() + 1;
+      shA.getRange(startRowA, 1, filasA.length, filasA[0].length).setValues(filasA);
+    }
+
+    return jsonResp({
+      ok: true,
+      quincena_id: quincenaId,
+      filasGuardadas: {
+        resultados: filasR.length,
+        agregados: filasA.length
+      },
+      timestamp_calculo: timestampCalculo,
+      warnings: calc.warnings || []
+    });
+  });
+}
+
+// ─── INICIALIZACIÓN Y MANTENIMIENTO ──────────────────────────────────────────
+
+/**
+ * Asegura que existan NOMINA_RESULTADOS y NOMINA_AGREGADOS con headers correctos.
+ * Idempotente. Llamada por endpoints de Fase 3b al inicio.
  */
 function asegurarHojasNomina() {
   const ss = SpreadsheetApp.getActive();
@@ -1727,7 +2389,6 @@ function asegurarHojasNomina() {
     { nombre: HOJAS.NOMINA_AGREGADOS,  headers: HEADERS.NOMINA_AGREGADOS  }
   ];
 
-  // Fast path: si ambas existen con headers OK, no hacer nada.
   let needsWork = false;
   for (let i = 0; i < defs.length; i++) {
     const sh = ss.getSheetByName(defs[i].nombre);
@@ -1759,6 +2420,9 @@ function asegurarHojasNomina() {
   });
 }
 
+/**
+ * Crea todas las hojas desde cero. Útil para clonar el sheet.
+ */
 function inicializarBD() {
   const ss = SpreadsheetApp.getActive();
 
@@ -1807,6 +2471,9 @@ function inicializarBD() {
   Logger.log('Inicialización v' + VERSION + ' completa.');
 }
 
+/**
+ * Fuerza el prompt OAuth tras crear el script. Correr una vez desde el editor.
+ */
 function autorizarPermisos() {
   SpreadsheetApp.getActive().getName();
   UrlFetchApp.fetch('https://www.google.com');
@@ -1815,73 +2482,13 @@ function autorizarPermisos() {
   Logger.log('Permisos OK');
 }
 
-function migrarAprobada() {
-  const ss = SpreadsheetApp.getActive();
-  const sh = ss.getSheetByName(HOJAS.CAPTURAS);
-  if (!sh) {
-    Logger.log('CAPTURAS no existe; corre inicializarBD() primero.');
-    return;
-  }
-
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  Logger.log('Headers actuales de CAPTURAS: ' + JSON.stringify(headers));
-
-  const yaTiene = headers.indexOf('aprobada_por') >= 0;
-  if (yaTiene) {
-    Logger.log('La columna aprobada_por ya existe. Nada que migrar.');
-  } else {
-    const colEnvio = headers.indexOf('fecha_envio');
-    if (colEnvio < 0) {
-      Logger.log('ERROR: no encuentro la columna fecha_envio. Headers: ' + JSON.stringify(headers));
-      return;
-    }
-    sh.insertColumnAfter(colEnvio + 1);
-    sh.getRange(1, colEnvio + 2).setValue('aprobada_por').setFontWeight('bold').setBackground('#1A1A18').setFontColor('#FFFFFF');
-    Logger.log('✓ Columna aprobada_por insertada en CAPTURAS (columna ' + (colEnvio + 2) + ').');
-  }
-
-  let shLog = ss.getSheetByName(HOJAS.APROBACIONES_LOG);
-  if (!shLog) {
-    shLog = ss.insertSheet(HOJAS.APROBACIONES_LOG);
-    shLog.getRange(1, 1, 1, HEADERS.APROBACIONES_LOG.length).setValues([HEADERS.APROBACIONES_LOG]);
-    shLog.getRange(1, 1, 1, HEADERS.APROBACIONES_LOG.length).setFontWeight('bold').setBackground('#1A1A18').setFontColor('#FFFFFF');
-    shLog.setFrozenRows(1);
-    [50, 80, 100, 200, 160, 400].forEach(function (w, i) { shLog.setColumnWidth(i + 1, w); });
-    Logger.log('✓ Hoja APROBACIONES_LOG creada.');
-  } else {
-    Logger.log('Hoja APROBACIONES_LOG ya existe.');
-  }
-
-  Logger.log('✓ Migración v3.0 completa.');
-}
-
-function fixFechasQuincenas() {
-  const ss = SpreadsheetApp.getActive();
-
-  const shQ = ss.getSheetByName(HOJAS.QUINCENAS);
-  if (shQ && shQ.getLastRow() > 1) {
-    const rows = shQ.getRange(2, 1, shQ.getLastRow() - 1, 4).getValues();
-    const fixed = rows.map(function (r) {
-      return [normFecha(r[0]), normFecha(r[1]), normFecha(r[2]), normFecha(r[3])];
-    });
-    shQ.getRange(2, 1, fixed.length, 4).setNumberFormat('@').setValues(fixed);
-    Logger.log('QUINCENAS: ' + fixed.length + ' filas normalizadas');
-  }
-
-  const shC = ss.getSheetByName(HOJAS.CAPTURAS);
-  if (shC && shC.getLastRow() > 1) {
-    const rows = shC.getRange(2, 2, shC.getLastRow() - 1, 1).getValues();
-    const fixed = rows.map(function (r) { return [normFecha(r[0])]; });
-    shC.getRange(2, 2, fixed.length, 1).setNumberFormat('@').setValues(fixed);
-    Logger.log('CAPTURAS: ' + fixed.length + ' filas normalizadas');
-  }
-
-  Logger.log('Fix completo.');
-}
-
-function borrarDatosCaptura(capturaId) {
+/**
+ * Limpia días/extras/viáticos de una captura y la regresa a BORRADOR.
+ * Útil cuando una captura quedó con datos corruptos.
+ */
+function limpiarCaptura(capturaId) {
   if (!capturaId) {
-    Logger.log('Falta capturaId. Ej: borrarDatosCaptura(8)');
+    Logger.log('Falta capturaId. Ej: limpiarCaptura(8)');
     return;
   }
 
@@ -1928,345 +2535,34 @@ function borrarDatosCaptura(capturaId) {
     }
   }
 
-  Logger.log('✓ Captura ' + capturaId + ' limpiada. Mariana puede recapturar desde cero.');
+  Logger.log('✓ Captura ' + capturaId + ' limpiada.');
 }
 
-function dedupTodos() {
-  const ss = SpreadsheetApp.getActive();
+// ─── FUNCIONES DE PRUEBA (correr desde el editor) ────────────────────────────
 
-  const shDias = ss.getSheetByName(HOJAS.CAPTURA_DIAS);
-  if (shDias) {
-    const rows = shDias.getDataRange().getValues();
-    const seen = {};
-    const toDelete = [];
-    for (let i = 1; i < rows.length; i++) {
-      const key = rows[i][1] + '|' + rows[i][2] + '|' + rows[i][3];
-      if (seen[key]) {
-        toDelete.push(i + 1);
-      } else {
-        seen[key] = true;
-      }
-    }
-    toDelete.reverse().forEach(function (r) { shDias.deleteRow(r); });
-    Logger.log('CAPTURA_DIAS: ' + toDelete.length + ' duplicados eliminados');
-  }
-
-  [HOJAS.CAPTURA_DIAS, HOJAS.CAPTURA_EXTRAS, HOJAS.CAPTURA_VIATICOS].forEach(function (nombre) {
-    const sh = ss.getSheetByName(nombre);
-    if (!sh) return;
-    const lastRow = sh.getLastRow();
-    if (lastRow < 2) return;
-    const ids = [];
-    for (let i = 0; i < lastRow - 1; i++) ids.push([i + 1]);
-    sh.getRange(2, 1, ids.length, 1).setValues(ids);
-    Logger.log(nombre + ': ' + ids.length + ' IDs reasignados secuencialmente');
-  });
-
-  Logger.log('✓ dedupTodos() completo.');
-}
-
-function dedupQuincenas() {
-  const sh = getSheet(HOJAS.QUINCENAS);
-  if (!sh || sh.getLastRow() < 2) { Logger.log('Nada que limpiar'); return; }
-
-  const rows = sh.getDataRange().getValues();
-  const headers = rows[0];
-  const seen = {};
-  const toDelete = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const id = normFecha(rows[i][0]);
-    if (!id) continue;
-    if (seen[id]) {
-      toDelete.push(i + 1);
-    } else {
-      seen[id] = true;
-    }
-  }
-
-  toDelete.reverse().forEach(function (rowIndex) {
-    sh.deleteRow(rowIndex);
-  });
-
-  Logger.log('Eliminadas ' + toDelete.length + ' filas duplicadas. Quedan ' + Object.keys(seen).length + ' quincenas únicas.');
-
-  if (sh.getLastRow() > 1) {
-    sh.getRange(2, 1, sh.getLastRow() - 1, 4).setNumberFormat('@');
-  }
-}
-
-function limpiarAdmin() {
-  borrarDatosCaptura(8);
-}
-// ═══════════════════════════════════════════════════════════════════════════
-// ═══ FASE 3b PREVIEW — Cálculo de nómina (solo lectura, no escribe)       ═══
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Endpoint: calcularNominaPreview
-// Lee capturas APROBADA y CERRADA de una quincena, aplica el modelo y devuelve
-// el desglose completo. NO escribe en sheets, es solo preview.
-//
-// Modelo:
-//   - bruto = (T + D) × tarifa + extras + viáticos
-//   - Tope IMSS $4,410.56 quincenal por empleado IMSS
-//   - CAMI paga el tope vía NOMINA_DIRECTO (proporcional a días por proyecto)
-//   - Contadores dispersan el excedente (no se registra en TRANSACCIONES)
-//   - NO_IMSS: CAMI paga TODO vía NOMINA_DIRECTO
-//   - NOMINA a contadores: bruto_proyecto × 1.06 (comisión 6% adentro)
-//   - REINTEGRO: 1 fila por quincena, proyecto=TRANSITO, suma topes IMSS
-//
-// Para agregar al backend: pegar este código al FINAL de Code.gs y agregar
-// el case 'calcularNominaPreview' en el switch del doPost (instrucciones abajo).
-
-function calcularNomina(quincenaId) {
-  if (!quincenaId) return { ok: false, error: 'falta quincena_id' };
-
-  const TOPE_IMSS = 4410.56;
-  const COMISION = 0.06;
-  const PROYECTO_REINTEGRO = 'TRANSITO';
-
-  // ── 1. Leer capturas APROBADA y CERRADA de esta quincena ──
-  const capturasAll = rowsToObjects(getSheet(HOJAS.CAPTURAS).getDataRange().getValues());
-  const capturasIncluidas = capturasAll.filter(function (c) {
-    return normFecha(c.quincena_id) === quincenaId &&
-           (c.estado === 'APROBADA' || c.estado === 'CERRADA');
-  });
-
-  // Capturas omitidas (warnings)
-  const capturasOmitidas = capturasAll.filter(function (c) {
-    return normFecha(c.quincena_id) === quincenaId &&
-           c.estado !== 'APROBADA' && c.estado !== 'CERRADA';
-  });
-
-  if (capturasIncluidas.length === 0) {
-    return {
-      ok: true,
-      quincena_id: quincenaId,
-      warnings: ['No hay capturas APROBADA ni CERRADA en esta quincena'],
-      capturas_omitidas: capturasOmitidas.map(function (c) {
-        return { proyecto: c.proyecto, supervisor: c.supervisor, estado: c.estado };
-      }),
-      resultados: [],
-      agregados_proyecto: [],
-      totales: {}
-    };
-  }
-
-  const idsIncluidas = {};
-  capturasIncluidas.forEach(function (c) { idsIncluidas[c.id] = c; });
-
-  // ── 2. Leer días, extras, viáticos solo de las capturas incluidas ──
-  const dias = rowsToObjects(getSheet(HOJAS.CAPTURA_DIAS).getDataRange().getValues())
-    .filter(function (d) { return idsIncluidas[d.captura_id]; });
-  const extras = rowsToObjects(getSheet(HOJAS.CAPTURA_EXTRAS).getDataRange().getValues())
-    .filter(function (e) { return idsIncluidas[e.captura_id]; });
-  const viaticos = rowsToObjects(getSheet(HOJAS.CAPTURA_VIATICOS).getDataRange().getValues())
-    .filter(function (v) { return idsIncluidas[v.captura_id]; });
-
-  // ── 3. Catálogo de empleados (tarifa y tipo) ──
-  const empAll = rowsToObjects(getSheet(HOJAS.EMPLEADOS).getDataRange().getValues());
-  const empById = {};
-  empAll.forEach(function (e) { empById[e.id] = e; });
-
-  // ── 4. Agrupar días pagables por (empleado, proyecto) ──
-  // dias_pagables = T + D
-  const agregado = {}; // key: empleado_id|proyecto → { dias, salario, extras, viaticos }
-
-  function keyEP(empId, proy) { return empId + '|' + proy; }
-
-  dias.forEach(function (d) {
-    const marca = String(d.marca || '').toUpperCase();
-    if (marca !== 'T' && marca !== 'D') return;
-    const offset = parseInt(d.dia_offset, 10);
-    if (isNaN(offset) || offset < 0 || offset > 13) return;
-    const cap = idsIncluidas[d.captura_id];
-    if (!cap) return;
-    const emp = empById[d.empleado_id];
-    if (!emp) return;
-    const tarifa = parseFloat(emp.tarifa_diaria || 0);
-    const k = keyEP(d.empleado_id, cap.proyecto);
-    if (!agregado[k]) {
-      agregado[k] = { empleado_id: d.empleado_id, proyecto: cap.proyecto, dias_t: 0, dias_d: 0, dias_pagables: 0, monto_salario: 0, monto_extras: 0, monto_viaticos: 0 };
-    }
-    if (marca === 'T') agregado[k].dias_t++;
-    else agregado[k].dias_d++;
-    agregado[k].dias_pagables++;
-    agregado[k].monto_salario += tarifa;
-  });
-
-  extras.forEach(function (e) {
-    const cap = idsIncluidas[e.captura_id];
-    if (!cap) return;
-    const monto = parseFloat(e.monto || 0);
-    if (!monto) return;
-    const k = keyEP(e.empleado_id, cap.proyecto);
-    if (!agregado[k]) {
-      agregado[k] = { empleado_id: e.empleado_id, proyecto: cap.proyecto, dias_t: 0, dias_d: 0, dias_pagables: 0, monto_salario: 0, monto_extras: 0, monto_viaticos: 0 };
-    }
-    agregado[k].monto_extras += monto;
-  });
-
-  viaticos.forEach(function (v) {
-    const cap = idsIncluidas[v.captura_id];
-    if (!cap) return;
-    const monto = parseFloat(v.monto || 0);
-    if (!monto) return;
-    const k = keyEP(v.empleado_id, cap.proyecto);
-    if (!agregado[k]) {
-      agregado[k] = { empleado_id: v.empleado_id, proyecto: cap.proyecto, dias_t: 0, dias_d: 0, dias_pagables: 0, monto_salario: 0, monto_extras: 0, monto_viaticos: 0 };
-    }
-    agregado[k].monto_viaticos += monto;
-  });
-
-  // ── 5. Calcular bruto por (empleado, proyecto) y totales por empleado ──
-  const totalesEmpleado = {}; // empleado_id → { dias_pagables, bruto_total }
-  Object.keys(agregado).forEach(function (k) {
-    const a = agregado[k];
-    a.bruto_proyecto = a.monto_salario + a.monto_extras + a.monto_viaticos;
-    if (!totalesEmpleado[a.empleado_id]) {
-      totalesEmpleado[a.empleado_id] = { dias_pagables: 0, bruto_total: 0 };
-    }
-    totalesEmpleado[a.empleado_id].dias_pagables += a.dias_pagables;
-    totalesEmpleado[a.empleado_id].bruto_total += a.bruto_proyecto;
-  });
-
-  // ── 6. Aplicar tope IMSS y calcular NOMINA_DIRECTO por (empleado, proyecto) ──
-  // CAMI paga el tope. Contadores pagan el excedente (no se registra).
-  // NO_IMSS: CAMI paga TODO el bruto.
-  const filasNominaDirecto = []; // {empleado_id, empleado_nombre, empleado_tipo, proyecto, monto}
-  Object.keys(agregado).forEach(function (k) {
-    const a = agregado[k];
-    const emp = empById[a.empleado_id];
-    if (!emp) return;
-    const tipo = emp.tipo;
-    const totales = totalesEmpleado[a.empleado_id];
-    let ndEmpleado;
-    if (tipo === 'IMSS') {
-      ndEmpleado = Math.min(totales.bruto_total, TOPE_IMSS);
-    } else {
-      ndEmpleado = totales.bruto_total;
-    }
-    // Distribución proporcional a días pagables
-    const proporcion = totales.dias_pagables > 0 ? a.dias_pagables / totales.dias_pagables : 0;
-    const ndProyecto = ndEmpleado * proporcion;
-    a.tope_imss_aplicado = (tipo === 'IMSS') ? ndEmpleado * proporcion : 0;
-    a.nomina_directo = ndProyecto;
-    a.comision_6pct = a.bruto_proyecto * COMISION;
-    a.total_a_contadores = a.bruto_proyecto * (1 + COMISION);
-
-    filasNominaDirecto.push({
-      empleado_id: a.empleado_id,
-      empleado_nombre: emp.nombre,
-      empleado_tipo: tipo,
-      proyecto: a.proyecto,
-      monto: round2(ndProyecto)
-    });
-  });
-
-  // ── 7. Construir resultados detallados ──
-  const resultados = Object.keys(agregado).map(function (k) {
-    const a = agregado[k];
-    const emp = empById[a.empleado_id];
-    return {
-      empleado_id: a.empleado_id,
-      empleado_nombre: emp ? emp.nombre : '(empleado #' + a.empleado_id + ')',
-      empleado_tipo: emp ? emp.tipo : '',
-      proyecto: a.proyecto,
-      dias_t: a.dias_t,
-      dias_d: a.dias_d,
-      dias_pagables: a.dias_pagables,
-      tarifa_diaria: emp ? parseFloat(emp.tarifa_diaria || 0) : 0,
-      monto_salario: round2(a.monto_salario),
-      monto_extras: round2(a.monto_extras),
-      monto_viaticos: round2(a.monto_viaticos),
-      bruto_proyecto: round2(a.bruto_proyecto),
-      tope_imss_aplicado: round2(a.tope_imss_aplicado),
-      nomina_directo: round2(a.nomina_directo),
-      comision_6pct: round2(a.comision_6pct),
-      total_a_contadores: round2(a.total_a_contadores)
-    };
-  });
-
-  // ── 8. Agregados por proyecto ──
-  const porProyecto = {};
-  resultados.forEach(function (r) {
-    if (!porProyecto[r.proyecto]) {
-      porProyecto[r.proyecto] = {
-        proyecto: r.proyecto, num_empleados_set: {},
-        bruto_total: 0, comision_6pct: 0, total_a_contadores: 0,
-        nomina_directo_total: 0, dias_t: 0, dias_d: 0
-      };
-    }
-    const p = porProyecto[r.proyecto];
-    p.num_empleados_set[r.empleado_id] = true;
-    p.bruto_total += r.bruto_proyecto;
-    p.comision_6pct += r.comision_6pct;
-    p.total_a_contadores += r.total_a_contadores;
-    p.nomina_directo_total += r.nomina_directo;
-    p.dias_t += r.dias_t;
-    p.dias_d += r.dias_d;
-  });
-  const agregadosProyecto = Object.keys(porProyecto).map(function (k) {
-    const p = porProyecto[k];
-    return {
-      proyecto: p.proyecto,
-      num_empleados: Object.keys(p.num_empleados_set).length,
-      dias_t: p.dias_t,
-      dias_d: p.dias_d,
-      bruto_total: round2(p.bruto_total),
-      comision_6pct: round2(p.comision_6pct),
-      total_a_contadores: round2(p.total_a_contadores),
-      nomina_directo_total: round2(p.nomina_directo_total)
-    };
-  });
-  agregadosProyecto.sort(function (a, b) { return String(a.proyecto).localeCompare(String(b.proyecto)); });
-
-  // ── 9. Totales globales ──
-  let brutoTotal = 0, ndTotal = 0, topeImssTotal = 0;
-  resultados.forEach(function (r) {
-    brutoTotal += r.bruto_proyecto;
-    ndTotal += r.nomina_directo;
-    topeImssTotal += r.tope_imss_aplicado;
-  });
-
-  const totales = {
-    bruto_total: round2(brutoTotal),
-    comision_6pct: round2(brutoTotal * COMISION),
-    total_a_contadores: round2(brutoTotal * (1 + COMISION)),
-    nomina_directo_total: round2(ndTotal),
-    reintegro_total: round2(topeImssTotal),
-    reintegro_proyecto: PROYECTO_REINTEGRO,
-    num_empleados: Object.keys(totalesEmpleado).length,
-    num_proyectos: Object.keys(porProyecto).length
+function testInvalidar() {
+  const fake = {
+    quincena_id: '2026-05-07',
+    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
   };
+  const resp = handleInvalidarCalculoNomina(fake);
+  Logger.log(resp.getContent());
+}
 
-  // ── 10. Warnings ──
-  const warnings = [];
-  if (capturasOmitidas.length > 0) {
-    capturasOmitidas.forEach(function (c) {
-      warnings.push('Captura ' + c.proyecto + ' (' + c.supervisor + ') NO incluida — estado ' + c.estado);
-    });
-  }
-
-  return {
-    ok: true,
-    quincena_id: quincenaId,
-    capturas_incluidas: capturasIncluidas.length,
-    capturas_omitidas: capturasOmitidas.length,
-    warnings: warnings,
-    resultados: resultados,
-    agregados_proyecto: agregadosProyecto,
-    filas_nomina_directo: filasNominaDirecto,
-    totales: totales
+function testObtener() {
+  const fake = {
+    quincena_id: '2026-05-07',
+    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
   };
+  const resp = handleObtenerCalculoNomina(fake);
+  Logger.log(resp.getContent());
 }
 
-// Wrapper HTTP — Fase 3b. La lógica vive en calcularNomina() para que
-// guardarCalculoNomina la reutilice sin duplicar.
-function handleCalcularNominaPreview(data) {
-  return jsonResp(calcularNomina(data.quincena_id));
-}
-
-function round2(n) {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+function testGuardar() {
+  const fake = {
+    quincena_id: '2026-05-07',
+    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
+  };
+  const resp = handleGuardarCalculoNomina(fake);
+  Logger.log(resp.getContent());
 }
