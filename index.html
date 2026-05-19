@@ -245,6 +245,53 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .as-option-label b{font-weight:700;font-size:14px;}
 .as-cancel{margin-top:8px;padding:14px;background:var(--card);text-align:center;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text);cursor:pointer;border:none;border-radius:14px 14px 0 0;font-family:inherit;width:100%;border-top:4px solid var(--bg);}
 .as-cancel:active{background:var(--light);}
+
+/* ═══ FASE 3b: cálculo de nómina ═══ */
+
+/* Badge "Sin snapshot" / "Calculada" en header (estilo .cap-status) */
+.snap-badge{display:inline-block;font-size:10px;padding:3px 10px;border-radius:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;margin-left:8px;}
+.snap-badge.sin-snapshot{background:var(--warn-bg);color:var(--warn);}
+.snap-badge.calculada{background:var(--ok-bg);color:var(--ok);}
+
+/* Botón disabled con tooltip (variante del btn-primary cuando trigger no aplica) */
+.btn-disabled-tooltip{opacity:.5;cursor:not-allowed;}
+
+/* Banners de la vista calc (estilo .conflict-banner) */
+.calc-banner{border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.5;border:0.5px solid;}
+.calc-banner.info{background:var(--info-bg);color:var(--info);border-color:var(--info);}
+.calc-banner.lock{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);}
+.calc-banner.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn);}
+.calc-banner ul{margin:6px 0 0 18px;padding:0;}
+.calc-banner b{font-weight:700;}
+
+/* 4 metric cards (estilo .aprob-resumen-card) */
+.calc-metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;}
+@media (max-width:720px){.calc-metric-grid{grid-template-columns:repeat(2,1fr);}}
+.calc-metric-card{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px;}
+.calc-metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.calc-metric-value{font-size:16px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+.calc-metric-meta{font-size:10px;color:var(--muted);margin-top:2px;}
+
+/* Tabla "Por proyecto" y "Detalle empleado×proyecto" */
+.calc-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;overflow:hidden;}
+.calc-table th,.calc-table td{padding:8px 10px;border-bottom:0.5px solid var(--border);text-align:left;}
+.calc-table th{font-weight:700;background:var(--light);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.calc-table .num{text-align:right;font-variant-numeric:tabular-nums;}
+.calc-table tbody tr:last-child td{border-bottom:0;}
+.calc-table tfoot td{border-top:0.5px solid var(--border);border-bottom:0;background:var(--light);font-weight:700;}
+
+/* <details> colapsable del detalle empleado×proyecto */
+.calc-detalle{border:0.5px solid var(--border);border-radius:8px;margin-bottom:16px;background:var(--card);overflow:hidden;}
+.calc-detalle summary{padding:10px 14px;cursor:pointer;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.calc-detalle[open] summary{border-bottom:0.5px solid var(--border);color:var(--text);}
+.calc-detalle .calc-table{margin-bottom:0;border:0;border-radius:0;}
+
+/* Botones placeholder de fases futuras (Excel, PDFs, Marcar pagada) */
+.calc-placeholder-row{display:flex;gap:8px;flex-wrap:wrap;}
+.calc-placeholder-row .btn-placeholder{flex:1;min-width:140px;}
+.btn-placeholder{opacity:.5;cursor:not-allowed;pointer-events:none;background:var(--light);color:var(--muted);border:1px dashed var(--border);}
+.calc-placeholder-hint{margin-top:8px;font-size:11px;color:var(--muted);text-align:center;}
+
 </style>
 </head>
 <body>
