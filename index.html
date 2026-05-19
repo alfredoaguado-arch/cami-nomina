@@ -245,6 +245,53 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .as-option-label b{font-weight:700;font-size:14px;}
 .as-cancel{margin-top:8px;padding:14px;background:var(--card);text-align:center;font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text);cursor:pointer;border:none;border-radius:14px 14px 0 0;font-family:inherit;width:100%;border-top:4px solid var(--bg);}
 .as-cancel:active{background:var(--light);}
+
+/* ═══ FASE 3b: cálculo de nómina ═══ */
+
+/* Badge "Sin snapshot" / "Calculada" en header (estilo .cap-status) */
+.snap-badge{display:inline-block;font-size:10px;padding:3px 10px;border-radius:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;white-space:nowrap;margin-left:8px;}
+.snap-badge.sin-snapshot{background:var(--warn-bg);color:var(--warn);}
+.snap-badge.calculada{background:var(--ok-bg);color:var(--ok);}
+
+/* Botón disabled con tooltip (variante del btn-primary cuando trigger no aplica) */
+.btn-disabled-tooltip{opacity:.5;cursor:not-allowed;}
+
+/* Banners de la vista calc (estilo .conflict-banner) */
+.calc-banner{border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.5;border:0.5px solid;}
+.calc-banner.info{background:var(--info-bg);color:var(--info);border-color:var(--info);}
+.calc-banner.lock{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);}
+.calc-banner.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn);}
+.calc-banner ul{margin:6px 0 0 18px;padding:0;}
+.calc-banner b{font-weight:700;}
+
+/* 4 metric cards (estilo .aprob-resumen-card) */
+.calc-metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;}
+@media (max-width:720px){.calc-metric-grid{grid-template-columns:repeat(2,1fr);}}
+.calc-metric-card{background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:10px;}
+.calc-metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.calc-metric-value{font-size:16px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+.calc-metric-meta{font-size:10px;color:var(--muted);margin-top:2px;}
+
+/* Tabla "Por proyecto" y "Detalle empleado×proyecto" */
+.calc-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;overflow:hidden;}
+.calc-table th,.calc-table td{padding:8px 10px;border-bottom:0.5px solid var(--border);text-align:left;}
+.calc-table th{font-weight:700;background:var(--light);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.calc-table .num{text-align:right;font-variant-numeric:tabular-nums;}
+.calc-table tbody tr:last-child td{border-bottom:0;}
+.calc-table tfoot td{border-top:0.5px solid var(--border);border-bottom:0;background:var(--light);font-weight:700;}
+
+/* <details> colapsable del detalle empleado×proyecto */
+.calc-detalle{border:0.5px solid var(--border);border-radius:8px;margin-bottom:16px;background:var(--card);overflow:hidden;}
+.calc-detalle summary{padding:10px 14px;cursor:pointer;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.calc-detalle[open] summary{border-bottom:0.5px solid var(--border);color:var(--text);}
+.calc-detalle .calc-table{margin-bottom:0;border:0;border-radius:0;}
+
+/* Botones placeholder de fases futuras (Excel, PDFs, Marcar pagada) */
+.calc-placeholder-row{display:flex;gap:8px;flex-wrap:wrap;}
+.calc-placeholder-row .btn-placeholder{flex:1;min-width:140px;}
+.btn-placeholder{opacity:.5;cursor:not-allowed;pointer-events:none;background:var(--light);color:var(--muted);border:1px dashed var(--border);}
+.calc-placeholder-hint{margin-top:8px;font-size:11px;color:var(--muted);text-align:center;}
+
 </style>
 </head>
 <body>
@@ -328,10 +375,14 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   <div class="cap-toolbar">
     <div class="cap-toolbar-row">
       <span class="cap-info">Quincena: <b id="aprob-quin-id">—</b></span>
+      <span id="aprob-badge-snapshot"></span>
       <button class="btn btn-secondary btn-sm" onclick="initAprob()">↻ Recargar</button>
     </div>
     <div class="cap-toolbar-row">
       <span class="cap-info" id="aprob-quin-fechas">—</span>
+    </div>
+    <div class="cap-toolbar-row" id="aprob-fila-boton-calcular" style="display:none">
+      <button id="aprob-btn-calcular" class="btn btn-primary btn-block" onclick="irACalcular()">Calcular nómina</button>
     </div>
   </div>
 
@@ -366,6 +417,16 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
   <div id="aprob-cap-lista-emp"></div>
   <div class="fab-bar" id="aprob-cap-fab"></div>
+</div>
+
+<!-- ═══ PANEL APROBACIÓN — VISTA DE CÁLCULO DE NÓMINA (Fase 3b) ═══ -->
+<div id="panel-aprob-calc" class="container" style="display:none">
+  <div class="cap-toolbar" id="aprob-calc-header"></div>
+  <div id="aprob-calc-banner"></div>
+  <div id="aprob-calc-metrics"></div>
+  <div id="aprob-calc-tabla-proyecto"></div>
+  <div id="aprob-calc-detalle-empleado"></div>
+  <div class="fab-bar" id="aprob-calc-fab"></div>
 </div>
 
 <!-- ═══ PANEL ADMINISTRATIVA — Mariana ═══ -->
@@ -682,6 +743,24 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div class="toast" id="toast"></div>
 
 <script>
+/**
+ * cami-nomina frontend
+ *
+ * v3.5 (18-may-2026): Fase 3b — cálculo y snapshot de nómina.
+ *   - Nueva vista panel-aprob-calc con dos estados (sin snapshot / calculada).
+ *   - Adapter normalizarCalculo(raw, source) unifica preview y snapshot al
+ *     mismo shape canónico (nombres del snapshot persistido).
+ *   - Badge "Calculada · <fecha>" o "Sin snapshot" en el header de la quincena.
+ *   - Botón "Calcular nómina" con trigger (no capturas en ENVIADA + al menos
+ *     una captura existente). Tooltip explicativo cuando no aplica.
+ *   - Banner inmutable verde con guardado_por + timestamp del snapshot
+ *     persistido (requiere backend v3.6+v3.7 con guardado_por y empleado_nombre).
+ *   - Placeholders deshabilitados para Excel/PDFs/Marcar pagada (Fases 3e/3d/3f).
+ *
+ * v3.4 (13-may-2026): calendario sin domingos en captura.
+ * v3.3 (11-may-2026): selector de quincena para supervisor/admin.
+ */
+
 // ═══ CONFIG ═══════════════════════════════════════════════════════════════════
 const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbySbzjOGtPPA8WpSvojGiNDg28Y6gQ41RAOpR9zPto_x9Dm20D8duuzpkd6VAJo-PI/exec';
 const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
@@ -717,6 +796,12 @@ let aprobDatosCaptura = null;
 let adminDatosCaptura = null;
 let quincenasCapturablesAdmin = [];  // v3.3: lista para Mariana
 let adminQuincenaSeleccionada = null; // v3.3
+
+// ═══ FASE 3b FRONTEND: estado del cálculo de nómina ═══
+const VERSION_FRONTEND = '3.5';
+let aprobCalculoSnapshot = null;  // shape canónico (source='snapshot') o null si no hay
+let aprobCalculoPreview = null;   // shape canónico (source='preview') o null
+let aprobCalculoLoading = false;  // anti-doble-click en botones Recalcular/Guardar
 
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
@@ -794,7 +879,7 @@ function cambiarVista(v) {
 
   vista = v;
   document.querySelectorAll('.tab').forEach(t => {
-    const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap') ? 'aprob' : v;
+    const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap' || v === 'aprob-calc') ? 'aprob' : v;
     t.classList.toggle('active', t.dataset.tab === tabActiva);
   });
   document.getElementById('panel-rh').style.display       = (v === 'rh')       ? 'block' : 'none';
@@ -802,6 +887,7 @@ function cambiarVista(v) {
   document.getElementById('panel-cap').style.display      = (v === 'cap-detail') ? 'block' : 'none';
   document.getElementById('panel-aprob').style.display    = (v === 'aprob')    ? 'block' : 'none';
   document.getElementById('panel-aprob-cap').style.display = (v === 'aprob-cap') ? 'block' : 'none';
+  document.getElementById('panel-aprob-calc').style.display = (v === 'aprob-calc') ? 'block' : 'none';
   document.getElementById('panel-admin').style.display    = (v === 'admin')    ? 'block' : 'none';
 
   document.getElementById('topbar-subtitle').textContent =
@@ -810,6 +896,7 @@ function cambiarVista(v) {
     v === 'cap-detail' ? 'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '') :
     v === 'aprob'     ? 'Nómina · Aprobación' :
     v === 'aprob-cap' ? 'Nómina · Revisar ' + (aprobDatosCaptura?.captura?.proyecto || '') :
+    v === 'aprob-calc' ? 'Nómina · Calcular ' + (aprobQuincena ? aprobQuincena.id : '') :
     v === 'admin'     ? 'Nómina · Administrativa' :
     'Nómina';
 
@@ -818,12 +905,14 @@ function cambiarVista(v) {
   if (v === 'cap-detail' && capturaActual)               cargarCaptura(capturaActual);
   if (v === 'aprob')                                     initAprob();
   if (v === 'aprob-cap' && aprobCapturaActual)           cargarCapturaAprob(aprobCapturaActual);
+  if (v === 'aprob-calc')                                initAprobCalc();
   if (v === 'admin')                                     initAdmin();
 }
 
 function onBack() {
   if (vista === 'cap-detail')      { cambiarVista('sup'); return; }
   if (vista === 'aprob-cap')       { cambiarVista('aprob'); return; }
+  if (vista === 'aprob-calc')      { cambiarVista('aprob'); return; }
   window.location.href = HUB_URL;
 }
 
@@ -858,6 +947,153 @@ function esErrorDeToken(err) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ═══ HELPERS FASE 3b ═════════════════════════════════════════════════════════
+function round2(n) { return Math.round(Number(n || 0) * 100) / 100; }
+
+function formatCurrency(n) {
+  const num = Number(n || 0);
+  return '$' + num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatTimestampLocal(s) {
+  if (!s) return '—';
+  const str = String(s);
+  // Backend devuelve "YYYY-MM-DD HH:MM:SS" en hora del servidor de Apps Script.
+  // Mostramos tal cual con formato visualmente compacto.
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return str;
+  return m[3] + '/' + m[2] + '/' + m[1] + ' ' + m[4] + ':' + m[5];
+}
+
+function calcularTotalesDesdeResultados(resultados) {
+  let bruto = 0, nd = 0, tope = 0;
+  const empleados = {}, proyectos = {};
+  resultados.forEach(function (r) {
+    bruto += r.bruto_total;
+    nd   += r.nomina_directo;
+    tope += r.tope_imss_aplicable;
+    empleados[r.id_empleado] = true;
+    proyectos[r.proyecto] = true;
+  });
+  return {
+    bruto:          round2(bruto),
+    nomina_directo: round2(nd),
+    excedente:      round2(bruto - nd),
+    comision:       round2(bruto * 0.06),
+    a_contadores:   round2(bruto * 1.06),
+    tope_imss:      round2(tope),
+    num_empleados:  Object.keys(empleados).length,
+    num_proyectos:  Object.keys(proyectos).length
+  };
+}
+
+// Adapter: normaliza calcularNominaPreview() y obtenerCalculoNomina() al mismo shape.
+// Nombres canónicos = nombres del snapshot persistido (bruto_base, bruto_total,
+// tope_imss_aplicable, comision, total_neto). El frontend SIEMPRE consume este shape.
+function normalizarCalculo(raw, source) {
+  if (source === 'snapshot') {
+    const resultados = (raw.resultados || []).map(function (r) {
+      return {
+        id_captura:          r.id_captura,
+        id_empleado:         r.id_empleado,
+        empleado_nombre:     r.empleado_nombre || ('(empleado #' + r.id_empleado + ')'),
+        proyecto:            r.proyecto,
+        dias_t:              Number(r.dias_t || 0),
+        dias_d:              Number(r.dias_d || 0),
+        dias_f:              Number(r.dias_f || 0),
+        dias_b:              Number(r.dias_b || 0),
+        dias_pagables:       Number(r.dias_pagables || 0),
+        tarifa_diaria:       Number(r.tarifa_diaria || 0),
+        bruto_base:          Number(r.bruto_base || 0),
+        extras:              Number(r.extras || 0),
+        viaticos:            Number(r.viaticos || 0),
+        bruto_total:         Number(r.bruto_total || 0),
+        tope_imss_aplicable: Number(r.tope_imss_aplicable || 0),
+        nomina_directo:      Number(r.nomina_directo || 0),
+        excedente:           Number(r.excedente || 0),
+        comision:            Number(r.comision || 0),
+        total_neto:          Number(r.total_neto || 0)
+      };
+    });
+    const agregados = (raw.agregados || []).map(function (a) {
+      return {
+        proyecto:                 a.proyecto,
+        total_empleados:          Number(a.total_empleados || 0),
+        total_dias_t:             Number(a.total_dias_t || 0),
+        total_dias_d:             Number(a.total_dias_d || 0),
+        total_bruto:              Number(a.total_bruto || 0),
+        total_nomina_directo:     Number(a.total_nomina_directo || 0),
+        total_excedente:          Number(a.total_excedente || 0),
+        total_comision:           Number(a.total_comision || 0),
+        monto_nomina_transaccion: Number(a.monto_nomina_transaccion || 0)
+      };
+    });
+    return {
+      source: 'snapshot',
+      metadata: {
+        timestamp_calculo: raw.timestamp_calculo,
+        guardado_por:      raw.guardado_por,
+        estado_quincena:   raw.estado_quincena,
+        warnings:          []
+      },
+      resultados: resultados,
+      agregados:  agregados,
+      totales:    calcularTotalesDesdeResultados(resultados)
+    };
+  }
+  // source === 'preview'
+  const resultados = (raw.resultados || []).map(function (r) {
+    return {
+      id_captura:          r.id_captura,
+      id_empleado:         r.empleado_id,
+      empleado_nombre:     r.empleado_nombre || ('(empleado #' + r.empleado_id + ')'),
+      proyecto:            r.proyecto,
+      dias_t:              Number(r.dias_t || 0),
+      dias_d:              Number(r.dias_d || 0),
+      dias_f:              Number(r.dias_f || 0),
+      dias_b:              Number(r.dias_b || 0),
+      dias_pagables:       Number(r.dias_pagables || 0),
+      tarifa_diaria:       Number(r.tarifa_diaria || 0),
+      bruto_base:          Number(r.monto_salario || 0),
+      extras:              Number(r.monto_extras || 0),
+      viaticos:            Number(r.monto_viaticos || 0),
+      bruto_total:         Number(r.bruto_proyecto || 0),
+      tope_imss_aplicable: Number(r.tope_imss_aplicado || 0),
+      nomina_directo:      Number(r.nomina_directo || 0),
+      excedente:           Number(r.excedente || 0),
+      comision:            Number(r.comision_6pct || 0),
+      total_neto:          Number(r.total_a_contadores || 0)
+    };
+  });
+  const agregados = (raw.agregados_proyecto || []).map(function (a) {
+    const totalBruto = Number(a.bruto_total || 0);
+    const totalNd    = Number(a.nomina_directo_total || 0);
+    return {
+      proyecto:                 a.proyecto,
+      total_empleados:          Number(a.num_empleados || 0),
+      total_dias_t:             Number(a.dias_t || 0),
+      total_dias_d:             Number(a.dias_d || 0),
+      total_bruto:              totalBruto,
+      total_nomina_directo:     totalNd,
+      total_excedente:          round2(totalBruto - totalNd),
+      total_comision:           Number(a.comision_6pct || 0),
+      monto_nomina_transaccion: Number(a.total_a_contadores || 0)
+    };
+  });
+  return {
+    source: 'preview',
+    metadata: {
+      timestamp_calculo: null,
+      guardado_por:      null,
+      estado_quincena:   null,
+      warnings:          raw.warnings || []
+    },
+    resultados: resultados,
+    agregados:  agregados,
+    totales:    calcularTotalesDesdeResultados(resultados)
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ PANEL RH                                                                ═══
@@ -1990,6 +2226,45 @@ async function volverBorrador() {
 // ═══ FASE 3a: PANEL DE APROBACIÓN                                            ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function puedeCalcularQuincena() {
+  if (!aprobCapturas || aprobCapturas.length === 0) {
+    return { enabled: false, reason: 'Aún no hay capturas en esta quincena' };
+  }
+  const enviadas = aprobCapturas.filter(function (c) { return c.estado === 'ENVIADA'; }).length;
+  if (enviadas > 0) {
+    return { enabled: false, reason: 'Aún hay ' + enviadas + ' captura' + (enviadas === 1 ? '' : 's') + ' pendiente' + (enviadas === 1 ? '' : 's') + ' de revisar' };
+  }
+  return { enabled: true, reason: '' };
+}
+
+function renderAprobHeaderBadge(calc) {
+  const el = document.getElementById('aprob-badge-snapshot');
+  if (!el) return;
+  if (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo) {
+    el.innerHTML = '<span class="snap-badge calculada">✓ Calculada · ' +
+                   escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>';
+  } else {
+    el.innerHTML = '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  }
+}
+
+function renderAprobHeaderBoton() {
+  const fila = document.getElementById('aprob-fila-boton-calcular');
+  const btn  = document.getElementById('aprob-btn-calcular');
+  if (!fila || !btn) return;
+  fila.style.display = 'flex';
+  const estado = puedeCalcularQuincena();
+  if (estado.enabled) {
+    btn.disabled = false;
+    btn.removeAttribute('title');
+    btn.classList.remove('btn-disabled-tooltip');
+  } else {
+    btn.disabled = true;
+    btn.setAttribute('title', estado.reason);
+    btn.classList.add('btn-disabled-tooltip');
+  }
+}
+
 async function initAprob() {
   const lista = document.getElementById('aprob-lista');
   lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando capturas...</div>';
@@ -1997,13 +2272,20 @@ async function initAprob() {
   document.getElementById('aprob-conflictos').innerHTML = '';
 
   try {
-    const [r, c] = await Promise.all([
-      callBackend('listarCapturasParaAprobar', {}),
-      callBackend('detectarConflictos', {})
-    ]);
+    const r = await callBackend('listarCapturasParaAprobar', {});
     aprobQuincena = r.quincena;
     aprobCapturas = r.capturas || [];
+
+    const quincenaId = aprobQuincena ? aprobQuincena.id : null;
+
+    const [c, s] = await Promise.all([
+      callBackend('detectarConflictos', {}),
+      quincenaId
+        ? callBackend('obtenerCalculoNomina', { quincena_id: quincenaId })
+        : Promise.resolve({ ok: true, calculado: false })
+    ]);
     aprobConflictos = c.conflictos || [];
+    aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
 
     document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
     if (aprobQuincena.fecha_inicio) {
@@ -2021,6 +2303,8 @@ async function initAprob() {
 
     renderConflictosBanner();
     renderAprobLista();
+    renderAprobHeaderBadge(aprobCalculoSnapshot);
+    renderAprobHeaderBoton();
   } catch(err) {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
     toast(err.message, 'error');
@@ -2216,6 +2500,298 @@ async function confirmarReabrir() {
     cambiarVista('aprob');
   } catch(err) { toast(err.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ FASE 3b: VISTA DE CÁLCULO DE NÓMINA                                    ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function irACalcular() {
+  if (!aprobQuincena) { toast('Cargá la quincena primero', 'error'); return; }
+  cambiarVista('aprob-calc');
+}
+
+async function initAprobCalc() {
+  if (!aprobQuincena) {
+    toast('Cargá la quincena primero', 'error');
+    cambiarVista('aprob');
+    return;
+  }
+  aprobCalculoPreview = null;
+  const hdr = document.getElementById('aprob-calc-header');
+  hdr.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando snapshot...</div>';
+  document.getElementById('aprob-calc-banner').innerHTML = '';
+  document.getElementById('aprob-calc-metrics').innerHTML = '';
+  document.getElementById('aprob-calc-tabla-proyecto').innerHTML = '';
+  document.getElementById('aprob-calc-detalle-empleado').innerHTML = '';
+  document.getElementById('aprob-calc-fab').innerHTML = '';
+
+  try {
+    const s = await callBackend('obtenerCalculoNomina', { quincena_id: aprobQuincena.id });
+    aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
+    renderAprobCalcVista();
+  } catch (err) {
+    hdr.innerHTML = '<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">Error: ' + escapeHtml(err.message) + '</div></div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderAprobCalcVista() {
+  // Header común
+  const hdr = document.getElementById('aprob-calc-header');
+  const calc = aprobCalculoSnapshot;
+  const pillHtml = (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo)
+    ? '<span class="snap-badge calculada">✓ Calculada · ' + escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>'
+    : '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  hdr.innerHTML = `
+    <div class="cap-toolbar-row">
+      <div>
+        <div class="cap-proj">🧮 Calcular nómina</div>
+        <div class="cap-quin">Quincena ${escapeHtml(aprobQuincena.id)} · ${escapeHtml(aprobQuincena.fecha_inicio || '')} → ${escapeHtml(aprobQuincena.fecha_fin || '')}</div>
+      </div>
+      ${pillHtml}
+    </div>
+  `;
+
+  if (aprobCalculoSnapshot) {
+    renderCalcCalculada(aprobCalculoSnapshot);
+  } else {
+    renderCalcSinSnapshot(aprobCalculoPreview);
+  }
+}
+
+function renderCalcSinSnapshot(preview) {
+  // Banner azul informativo (siempre)
+  document.getElementById('aprob-calc-banner').innerHTML = `
+    <div class="calc-banner info">
+      <b>El snapshot es inmutable.</b> Una vez guardado, los datos quedan congelados. Reabrir una captura invalida el snapshot automáticamente.
+    </div>
+  `;
+
+  // Metric cards: ceros si no hay preview, valores si sí
+  const totales = preview ? preview.totales : { bruto:0, tope_imss:0, excedente:0, comision:0, num_empleados:0, num_proyectos:0 };
+  renderMetricCards(totales);
+
+  // Tablas: vacías si no hay preview, llenas si sí
+  if (preview) {
+    renderTablaPorProyecto(preview.agregados);
+    renderDetallePorEmpleado(preview.resultados, false);
+  } else {
+    document.getElementById('aprob-calc-tabla-proyecto').innerHTML =
+      '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">Sin preview cargado</div><div class="empty-state-msg">Click "Calcular preview" para generar los números a partir de las capturas APROBADA / CERRADA.</div></div>';
+    document.getElementById('aprob-calc-detalle-empleado').innerHTML = '';
+  }
+
+  // Warnings del preview
+  if (preview && preview.metadata.warnings.length > 0) {
+    const items = preview.metadata.warnings.map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join('');
+    document.getElementById('aprob-calc-banner').innerHTML +=
+      '<div class="calc-banner warn"><b>Avisos:</b><ul>' + items + '</ul></div>';
+  }
+
+  // FAB con botones de acción
+  const fab = document.getElementById('aprob-calc-fab');
+  const labelRecalc = preview ? 'Recalcular' : 'Calcular preview';
+  const guardarHtml = preview && preview.resultados.length > 0
+    ? '<button class="btn btn-primary" id="btn-guardar-calc" onclick="confirmarGuardarCalculo()">💾 Guardar cálculo</button>'
+    : '';
+  fab.innerHTML = `
+    <button class="btn btn-secondary" id="btn-recalc" onclick="cargarPreview()">${labelRecalc}</button>
+    ${guardarHtml}
+  `;
+}
+
+async function cargarPreview() {
+  if (aprobCalculoLoading) return;
+  aprobCalculoLoading = true;
+  const btn = document.getElementById('btn-recalc');
+  if (btn) { btn.disabled = true; btn.textContent = 'Calculando…'; }
+
+  try {
+    const r = await callBackend('calcularNominaPreview', { quincena_id: aprobQuincena.id });
+    aprobCalculoPreview = normalizarCalculo(r, 'preview');
+    renderAprobCalcVista();
+  } catch (err) {
+    toast(err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Calcular preview'; }
+  } finally {
+    aprobCalculoLoading = false;
+  }
+}
+
+function renderMetricCards(totales) {
+  const cont = document.getElementById('aprob-calc-metrics');
+  cont.innerHTML = `
+    <div class="calc-metric-grid">
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Bruto total</div>
+        <div class="calc-metric-value">${formatCurrency(totales.bruto)}</div>
+        <div class="calc-metric-meta">${totales.num_empleados} empleado${totales.num_empleados===1?'':'s'} · ${totales.num_proyectos} proyecto${totales.num_proyectos===1?'':'s'}</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Tope IMSS aplicado</div>
+        <div class="calc-metric-value">${formatCurrency(totales.tope_imss)}</div>
+        <div class="calc-metric-meta">Reintegro a CAMI</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Excedente</div>
+        <div class="calc-metric-value">${formatCurrency(totales.excedente)}</div>
+        <div class="calc-metric-meta">Lo dispersan contadores</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Comisión 6%</div>
+        <div class="calc-metric-value">${formatCurrency(totales.comision)}</div>
+        <div class="calc-metric-meta">Dentro de NOMINA</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTablaPorProyecto(agregados) {
+  const cont = document.getElementById('aprob-calc-tabla-proyecto');
+  if (!agregados || agregados.length === 0) {
+    cont.innerHTML = '';
+    return;
+  }
+  let totBruto = 0, totTope = 0, totContadores = 0, totEmp = 0;
+  const filas = agregados.map(function (a) {
+    const topeProy = a.total_bruto - a.total_excedente;
+    totBruto += a.total_bruto;
+    totTope  += topeProy;
+    totContadores += a.monto_nomina_transaccion;
+    totEmp   += a.total_empleados;
+    return `
+      <tr>
+        <td>${escapeHtml(a.proyecto)}</td>
+        <td class="num">${a.total_empleados}</td>
+        <td class="num">${formatCurrency(a.total_bruto)}</td>
+        <td class="num">${formatCurrency(topeProy)}</td>
+        <td class="num">${formatCurrency(a.monto_nomina_transaccion)}</td>
+      </tr>
+    `;
+  }).join('');
+  cont.innerHTML = `
+    <div class="section-header"><span>Por proyecto</span></div>
+    <table class="calc-table">
+      <thead><tr><th>Proyecto</th><th class="num">Empleados</th><th class="num">Bruto</th><th class="num">Tope IMSS</th><th class="num">A contadores</th></tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot>
+        <tr class="calc-table-total">
+          <td><b>Total</b></td>
+          <td class="num"><b>${totEmp}</b></td>
+          <td class="num"><b>${formatCurrency(totBruto)}</b></td>
+          <td class="num"><b>${formatCurrency(totTope)}</b></td>
+          <td class="num"><b>${formatCurrency(totContadores)}</b></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function renderDetallePorEmpleado(resultados, abierto) {
+  const cont = document.getElementById('aprob-calc-detalle-empleado');
+  if (!resultados || resultados.length === 0) {
+    cont.innerHTML = '';
+    return;
+  }
+  const filas = resultados.map(function (r) {
+    return `
+      <tr>
+        <td>${escapeHtml(r.empleado_nombre)}</td>
+        <td>${escapeHtml(r.proyecto)}</td>
+        <td class="num">${r.dias_pagables}</td>
+        <td class="num">${formatCurrency(r.bruto_total)}</td>
+        <td class="num">${formatCurrency(r.tope_imss_aplicable)}</td>
+      </tr>
+    `;
+  }).join('');
+  cont.innerHTML = `
+    <details class="calc-detalle"${abierto ? ' open' : ''}>
+      <summary>Detalle por empleado × proyecto (${resultados.length} fila${resultados.length===1?'':'s'})</summary>
+      <table class="calc-table">
+        <thead><tr><th>Empleado</th><th>Proyecto</th><th class="num">Días T+D</th><th class="num">Bruto</th><th class="num">Tope IMSS</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </details>
+  `;
+}
+
+async function confirmarGuardarCalculo() {
+  if (aprobCalculoLoading) return;
+  if (!aprobCalculoPreview || aprobCalculoPreview.resultados.length === 0) {
+    toast('No hay datos para guardar', 'error');
+    return;
+  }
+  const tot = aprobCalculoPreview.totales;
+  const msg = '¿Guardar snapshot inmutable de la quincena ' + aprobQuincena.id + '?\n\n' +
+              '· ' + tot.num_empleados + ' empleado' + (tot.num_empleados===1?'':'s') + ', ' +
+                     tot.num_proyectos + ' proyecto' + (tot.num_proyectos===1?'':'s') + '\n' +
+              '· Bruto: ' + formatCurrency(tot.bruto) + '\n' +
+              '· A contadores: ' + formatCurrency(tot.a_contadores) + '\n\n' +
+              'Una vez guardado, solo se puede modificar reabriendo una captura.';
+  if (!confirm(msg)) return;
+
+  aprobCalculoLoading = true;
+  const btn = document.getElementById('btn-guardar-calc');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    await callBackend('guardarCalculoNomina', { quincena_id: aprobQuincena.id });
+    toast('Snapshot guardado', 'success');
+    aprobCalculoPreview = null;
+    await initAprobCalc();  // re-fetch → vista pasa a estado calculada
+  } catch (err) {
+    const msgErr = String(err.message || '');
+    if (msgErr.indexOf('ya existe snapshot') >= 0) {
+      // Conflicto: snapshot ya guardado (race con otro usuario/pestaña).
+      // Refrescamos para mostrar el snapshot real.
+      toast('Ya existe un snapshot guardado. Recargando vista...');
+      await initAprobCalc();
+    } else if (msgErr.indexOf('PAGADA') >= 0) {
+      // Quincena pagada: bloqueo del backend Fase 3f.
+      toast('Esta quincena ya está PAGADA y no admite cambios.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cálculo'; }
+    } else {
+      // Error genérico (token, red, etc.)
+      toast(msgErr || 'Error al guardar', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cálculo'; }
+    }
+  } finally {
+    aprobCalculoLoading = false;
+  }
+}
+
+function renderCalcCalculada(calc) {
+  // Banner verde con candado.
+  // Si guardado_por viene vacío/null (snapshots pre-v3.6), omitimos "por <nombre>"
+  // para no mostrar "por —" o "por null".
+  const ts = formatTimestampLocal(calc.metadata.timestamp_calculo);
+  const guardadoPor = calc.metadata.guardado_por;
+  const tieneAutor = guardadoPor && String(guardadoPor).trim() !== '';
+  const bannerHtml = tieneAutor
+    ? '🔒 Snapshot guardado por <b>' + escapeHtml(String(guardadoPor)) + '</b> el <b>' + escapeHtml(ts) + '</b>. Los datos están congelados. Para modificar, reabre una captura desde el panel de aprobación.'
+    : '🔒 Snapshot guardado el <b>' + escapeHtml(ts) + '</b>. Los datos están congelados. Para modificar, reabre una captura desde el panel de aprobación.';
+  document.getElementById('aprob-calc-banner').innerHTML =
+    '<div class="calc-banner lock">' + bannerHtml + '</div>';
+
+  // Metric cards desde totales del snapshot (adapter ya normalizó)
+  renderMetricCards(calc.totales);
+
+  // Tablas (snapshot)
+  renderTablaPorProyecto(calc.agregados);
+  renderDetallePorEmpleado(calc.resultados, false);
+
+  // FAB: 3 botones placeholder deshabilitados + leyenda
+  document.getElementById('aprob-calc-fab').innerHTML = `
+    <div class="calc-placeholder-row">
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3e">📊 Excel para contadores</button>
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3d">📄 PDFs detallado y resumido</button>
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3f">✅ Marcar como pagada</button>
+    </div>
+    <div class="calc-placeholder-hint">
+      <i>Excel, PDFs y marcar como pagada llegan en próximas fases (3d, 3e, 3f).</i>
+    </div>
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

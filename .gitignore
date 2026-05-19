@@ -1,0 +1,5 @@
+# Configuración local del agente Claude Code (no parte del proyecto)
+.claude/
+
+# Notas personales fuera del scope del repo (Obsidian, drafts, etc.)
+cami-nomina-fase-3b-frontend.md
