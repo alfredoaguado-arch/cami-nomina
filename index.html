@@ -2447,9 +2447,214 @@ function irACalcular() {
 }
 
 async function initAprobCalc() {
-  // Stub temporal — Task 3 lo implementa completo
-  document.getElementById('aprob-calc-header').innerHTML =
-    '<div class="cap-toolbar-row"><div class="cap-info">Vista de cálculo (en construcción)</div></div>';
+  if (!aprobQuincena) {
+    toast('Cargá la quincena primero', 'error');
+    cambiarVista('aprob');
+    return;
+  }
+  aprobCalculoPreview = null;
+  const hdr = document.getElementById('aprob-calc-header');
+  hdr.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando snapshot...</div>';
+  document.getElementById('aprob-calc-banner').innerHTML = '';
+  document.getElementById('aprob-calc-metrics').innerHTML = '';
+  document.getElementById('aprob-calc-tabla-proyecto').innerHTML = '';
+  document.getElementById('aprob-calc-detalle-empleado').innerHTML = '';
+  document.getElementById('aprob-calc-fab').innerHTML = '';
+
+  try {
+    const s = await callBackend('obtenerCalculoNomina', { quincena_id: aprobQuincena.id });
+    aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
+    renderAprobCalcVista();
+  } catch (err) {
+    hdr.innerHTML = '<div class="cap-toolbar-row"><div class="cap-info" style="color:var(--err)">Error: ' + escapeHtml(err.message) + '</div></div>';
+    toast(err.message, 'error');
+  }
+}
+
+function renderAprobCalcVista() {
+  // Header común
+  const hdr = document.getElementById('aprob-calc-header');
+  const calc = aprobCalculoSnapshot;
+  const pillHtml = (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo)
+    ? '<span class="snap-badge calculada">✓ Calculada · ' + escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>'
+    : '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  hdr.innerHTML = `
+    <div class="cap-toolbar-row">
+      <div>
+        <div class="cap-proj">🧮 Calcular nómina</div>
+        <div class="cap-quin">Quincena ${escapeHtml(aprobQuincena.id)} · ${escapeHtml(aprobQuincena.fecha_inicio || '')} → ${escapeHtml(aprobQuincena.fecha_fin || '')}</div>
+      </div>
+      ${pillHtml}
+    </div>
+  `;
+
+  if (aprobCalculoSnapshot) {
+    // Task 5 implementa renderCalcCalculada — por ahora stub temporal
+    document.getElementById('aprob-calc-banner').innerHTML =
+      '<div class="calc-banner info">Snapshot detectado. Vista calculada llega en Task 5.</div>';
+    renderMetricCards(aprobCalculoSnapshot.totales);
+    renderTablaPorProyecto(aprobCalculoSnapshot.agregados);
+    renderDetallePorEmpleado(aprobCalculoSnapshot.resultados, false);
+    document.getElementById('aprob-calc-fab').innerHTML = '';
+  } else {
+    renderCalcSinSnapshot(aprobCalculoPreview);
+  }
+}
+
+function renderCalcSinSnapshot(preview) {
+  // Banner azul informativo (siempre)
+  document.getElementById('aprob-calc-banner').innerHTML = `
+    <div class="calc-banner info">
+      <b>El snapshot es inmutable.</b> Una vez guardado, los datos quedan congelados. Reabrir una captura invalida el snapshot automáticamente.
+    </div>
+  `;
+
+  // Metric cards: ceros si no hay preview, valores si sí
+  const totales = preview ? preview.totales : { bruto:0, tope_imss:0, excedente:0, comision:0, num_empleados:0, num_proyectos:0 };
+  renderMetricCards(totales);
+
+  // Tablas: vacías si no hay preview, llenas si sí
+  if (preview) {
+    renderTablaPorProyecto(preview.agregados);
+    renderDetallePorEmpleado(preview.resultados, false);
+  } else {
+    document.getElementById('aprob-calc-tabla-proyecto').innerHTML =
+      '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-title">Sin preview cargado</div><div class="empty-state-msg">Click "Calcular preview" para generar los números a partir de las capturas APROBADA / CERRADA.</div></div>';
+    document.getElementById('aprob-calc-detalle-empleado').innerHTML = '';
+  }
+
+  // Warnings del preview
+  if (preview && preview.metadata.warnings.length > 0) {
+    const items = preview.metadata.warnings.map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join('');
+    document.getElementById('aprob-calc-banner').innerHTML +=
+      '<div class="calc-banner warn"><b>Avisos:</b><ul>' + items + '</ul></div>';
+  }
+
+  // FAB con botones de acción
+  const fab = document.getElementById('aprob-calc-fab');
+  const labelRecalc = preview ? 'Recalcular' : 'Calcular preview';
+  const guardarHtml = preview && preview.resultados.length > 0
+    ? '<button class="btn btn-primary" id="btn-guardar-calc" onclick="confirmarGuardarCalculo()">💾 Guardar cálculo</button>'
+    : '';
+  fab.innerHTML = `
+    <button class="btn btn-secondary" id="btn-recalc" onclick="cargarPreview()">${labelRecalc}</button>
+    ${guardarHtml}
+  `;
+}
+
+async function cargarPreview() {
+  if (aprobCalculoLoading) return;
+  aprobCalculoLoading = true;
+  const btn = document.getElementById('btn-recalc');
+  if (btn) { btn.disabled = true; btn.textContent = 'Calculando…'; }
+
+  try {
+    const r = await callBackend('calcularNominaPreview', { quincena_id: aprobQuincena.id });
+    aprobCalculoPreview = normalizarCalculo(r, 'preview');
+    renderAprobCalcVista();
+  } catch (err) {
+    toast(err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Calcular preview'; }
+  } finally {
+    aprobCalculoLoading = false;
+  }
+}
+
+function renderMetricCards(totales) {
+  const cont = document.getElementById('aprob-calc-metrics');
+  cont.innerHTML = `
+    <div class="calc-metric-grid">
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Bruto total</div>
+        <div class="calc-metric-value">${formatCurrency(totales.bruto)}</div>
+        <div class="calc-metric-meta">${totales.num_empleados} empleado${totales.num_empleados===1?'':'s'} · ${totales.num_proyectos} proyecto${totales.num_proyectos===1?'':'s'}</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Tope IMSS aplicado</div>
+        <div class="calc-metric-value">${formatCurrency(totales.tope_imss)}</div>
+        <div class="calc-metric-meta">Reintegro a CAMI</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Excedente</div>
+        <div class="calc-metric-value">${formatCurrency(totales.excedente)}</div>
+        <div class="calc-metric-meta">Lo dispersan contadores</div>
+      </div>
+      <div class="calc-metric-card">
+        <div class="calc-metric-label">Comisión 6%</div>
+        <div class="calc-metric-value">${formatCurrency(totales.comision)}</div>
+        <div class="calc-metric-meta">Dentro de NOMINA</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTablaPorProyecto(agregados) {
+  const cont = document.getElementById('aprob-calc-tabla-proyecto');
+  if (!agregados || agregados.length === 0) {
+    cont.innerHTML = '';
+    return;
+  }
+  let totBruto = 0, totTope = 0, totContadores = 0, totEmp = 0;
+  const filas = agregados.map(function (a) {
+    const topeProy = a.total_bruto - a.total_excedente;
+    totBruto += a.total_bruto;
+    totTope  += topeProy;
+    totContadores += a.monto_nomina_transaccion;
+    totEmp   += a.total_empleados;
+    return `
+      <tr>
+        <td>${escapeHtml(a.proyecto)}</td>
+        <td class="num">${a.total_empleados}</td>
+        <td class="num">${formatCurrency(a.total_bruto)}</td>
+        <td class="num">${formatCurrency(topeProy)}</td>
+        <td class="num">${formatCurrency(a.monto_nomina_transaccion)}</td>
+      </tr>
+    `;
+  }).join('');
+  cont.innerHTML = `
+    <div class="section-header"><span>Por proyecto</span></div>
+    <table class="calc-table">
+      <thead><tr><th>Proyecto</th><th class="num">Empleados</th><th class="num">Bruto</th><th class="num">Tope IMSS</th><th class="num">A contadores</th></tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot>
+        <tr class="calc-table-total">
+          <td><b>Total</b></td>
+          <td class="num"><b>${totEmp}</b></td>
+          <td class="num"><b>${formatCurrency(totBruto)}</b></td>
+          <td class="num"><b>${formatCurrency(totTope)}</b></td>
+          <td class="num"><b>${formatCurrency(totContadores)}</b></td>
+        </tr>
+      </tfoot>
+    </table>
+  `;
+}
+
+function renderDetallePorEmpleado(resultados, abierto) {
+  const cont = document.getElementById('aprob-calc-detalle-empleado');
+  if (!resultados || resultados.length === 0) {
+    cont.innerHTML = '';
+    return;
+  }
+  const filas = resultados.map(function (r) {
+    return `
+      <tr>
+        <td>${escapeHtml(r.empleado_nombre)}</td>
+        <td>${escapeHtml(r.proyecto)}</td>
+        <td class="num">${r.dias_pagables}</td>
+        <td class="num">${formatCurrency(r.bruto_total)}</td>
+        <td class="num">${formatCurrency(r.tope_imss_aplicable)}</td>
+      </tr>
+    `;
+  }).join('');
+  cont.innerHTML = `
+    <details class="calc-detalle"${abierto ? ' open' : ''}>
+      <summary>Detalle por empleado × proyecto (${resultados.length} fila${resultados.length===1?'':'s'})</summary>
+      <table class="calc-table">
+        <thead><tr><th>Empleado</th><th>Proyecto</th><th class="num">Días T+D</th><th class="num">Bruto</th><th class="num">Tope IMSS</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </details>
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
