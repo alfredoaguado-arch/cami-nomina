@@ -2657,6 +2657,51 @@ function renderDetallePorEmpleado(resultados, abierto) {
   `;
 }
 
+async function confirmarGuardarCalculo() {
+  if (aprobCalculoLoading) return;
+  if (!aprobCalculoPreview || aprobCalculoPreview.resultados.length === 0) {
+    toast('No hay datos para guardar', 'error');
+    return;
+  }
+  const tot = aprobCalculoPreview.totales;
+  const msg = '¿Guardar snapshot inmutable de la quincena ' + aprobQuincena.id + '?\n\n' +
+              '· ' + tot.num_empleados + ' empleado' + (tot.num_empleados===1?'':'s') + ', ' +
+                     tot.num_proyectos + ' proyecto' + (tot.num_proyectos===1?'':'s') + '\n' +
+              '· Bruto: ' + formatCurrency(tot.bruto) + '\n' +
+              '· A contadores: ' + formatCurrency(tot.a_contadores) + '\n\n' +
+              'Una vez guardado, solo se puede modificar reabriendo una captura.';
+  if (!confirm(msg)) return;
+
+  aprobCalculoLoading = true;
+  const btn = document.getElementById('btn-guardar-calc');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    await callBackend('guardarCalculoNomina', { quincena_id: aprobQuincena.id });
+    toast('Snapshot guardado', 'success');
+    aprobCalculoPreview = null;
+    await initAprobCalc();  // re-fetch → vista pasa a estado calculada
+  } catch (err) {
+    const msgErr = String(err.message || '');
+    if (msgErr.indexOf('ya existe snapshot') >= 0) {
+      // Conflicto: snapshot ya guardado (race con otro usuario/pestaña).
+      // Refrescamos para mostrar el snapshot real.
+      toast('Ya existe un snapshot guardado. Recargando vista...');
+      await initAprobCalc();
+    } else if (msgErr.indexOf('PAGADA') >= 0) {
+      // Quincena pagada: bloqueo del backend Fase 3f.
+      toast('Esta quincena ya está PAGADA y no admite cambios.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cálculo'; }
+    } else {
+      // Error genérico (token, red, etc.)
+      toast(msgErr || 'Error al guardar', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cálculo'; }
+    }
+  } finally {
+    aprobCalculoLoading = false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ FASE 3c: CAPTURA ADMINISTRATIVA (Mariana) — v3.3 con selector          ═══
 // ═══════════════════════════════════════════════════════════════════════════════
