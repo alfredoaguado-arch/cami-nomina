@@ -2489,13 +2489,7 @@ function renderAprobCalcVista() {
   `;
 
   if (aprobCalculoSnapshot) {
-    // Task 5 implementa renderCalcCalculada — por ahora stub temporal
-    document.getElementById('aprob-calc-banner').innerHTML =
-      '<div class="calc-banner info">Snapshot detectado. Vista calculada llega en Task 5.</div>';
-    renderMetricCards(aprobCalculoSnapshot.totales);
-    renderTablaPorProyecto(aprobCalculoSnapshot.agregados);
-    renderDetallePorEmpleado(aprobCalculoSnapshot.resultados, false);
-    document.getElementById('aprob-calc-fab').innerHTML = '';
+    renderCalcCalculada(aprobCalculoSnapshot);
   } else {
     renderCalcSinSnapshot(aprobCalculoPreview);
   }
@@ -2700,6 +2694,39 @@ async function confirmarGuardarCalculo() {
   } finally {
     aprobCalculoLoading = false;
   }
+}
+
+function renderCalcCalculada(calc) {
+  // Banner verde con candado.
+  // Si guardado_por viene vacío/null (snapshots pre-v3.6), omitimos "por <nombre>"
+  // para no mostrar "por —" o "por null".
+  const ts = formatTimestampLocal(calc.metadata.timestamp_calculo);
+  const guardadoPor = calc.metadata.guardado_por;
+  const tieneAutor = guardadoPor && String(guardadoPor).trim() !== '';
+  const bannerHtml = tieneAutor
+    ? '🔒 Snapshot guardado por <b>' + escapeHtml(String(guardadoPor)) + '</b> el <b>' + escapeHtml(ts) + '</b>. Los datos están congelados. Para modificar, reabre una captura desde el panel de aprobación.'
+    : '🔒 Snapshot guardado el <b>' + escapeHtml(ts) + '</b>. Los datos están congelados. Para modificar, reabre una captura desde el panel de aprobación.';
+  document.getElementById('aprob-calc-banner').innerHTML =
+    '<div class="calc-banner lock">' + bannerHtml + '</div>';
+
+  // Metric cards desde totales del snapshot (adapter ya normalizó)
+  renderMetricCards(calc.totales);
+
+  // Tablas (snapshot)
+  renderTablaPorProyecto(calc.agregados);
+  renderDetallePorEmpleado(calc.resultados, false);
+
+  // FAB: 3 botones placeholder deshabilitados + leyenda
+  document.getElementById('aprob-calc-fab').innerHTML = `
+    <div class="calc-placeholder-row">
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3e">📊 Excel para contadores</button>
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3d">📄 PDFs detallado y resumido</button>
+      <button class="btn btn-placeholder" disabled title="Disponible en Fase 3f">✅ Marcar como pagada</button>
+    </div>
+    <div class="calc-placeholder-hint">
+      <i>Excel, PDFs y marcar como pagada llegan en próximas fases (3d, 3e, 3f).</i>
+    </div>
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
