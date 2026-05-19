@@ -743,6 +743,24 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div class="toast" id="toast"></div>
 
 <script>
+/**
+ * cami-nomina frontend
+ *
+ * v3.5 (18-may-2026): Fase 3b — cálculo y snapshot de nómina.
+ *   - Nueva vista panel-aprob-calc con dos estados (sin snapshot / calculada).
+ *   - Adapter normalizarCalculo(raw, source) unifica preview y snapshot al
+ *     mismo shape canónico (nombres del snapshot persistido).
+ *   - Badge "Calculada · <fecha>" o "Sin snapshot" en el header de la quincena.
+ *   - Botón "Calcular nómina" con trigger (no capturas en ENVIADA + al menos
+ *     una captura existente). Tooltip explicativo cuando no aplica.
+ *   - Banner inmutable verde con guardado_por + timestamp del snapshot
+ *     persistido (requiere backend v3.6+v3.7 con guardado_por y empleado_nombre).
+ *   - Placeholders deshabilitados para Excel/PDFs/Marcar pagada (Fases 3e/3d/3f).
+ *
+ * v3.4 (13-may-2026): calendario sin domingos en captura.
+ * v3.3 (11-may-2026): selector de quincena para supervisor/admin.
+ */
+
 // ═══ CONFIG ═══════════════════════════════════════════════════════════════════
 const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbySbzjOGtPPA8WpSvojGiNDg28Y6gQ41RAOpR9zPto_x9Dm20D8duuzpkd6VAJo-PI/exec';
 const HUB_URL = 'https://alfredoaguado-arch.github.io/cami-app2/';
