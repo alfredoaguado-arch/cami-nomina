@@ -718,6 +718,12 @@ let adminDatosCaptura = null;
 let quincenasCapturablesAdmin = [];  // v3.3: lista para Mariana
 let adminQuincenaSeleccionada = null; // v3.3
 
+// ═══ FASE 3b FRONTEND: estado del cálculo de nómina ═══
+const VERSION_FRONTEND = '3.5';
+let aprobCalculoSnapshot = null;  // shape canónico (source='snapshot') o null si no hay
+let aprobCalculoPreview = null;   // shape canónico (source='preview') o null
+let aprobCalculoLoading = false;  // anti-doble-click en botones Recalcular/Guardar
+
 // ═══ INIT ═════════════════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', init);
 
@@ -858,6 +864,153 @@ function esErrorDeToken(err) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ═══ HELPERS FASE 3b ═════════════════════════════════════════════════════════
+function round2(n) { return Math.round(Number(n || 0) * 100) / 100; }
+
+function formatCurrency(n) {
+  const num = Number(n || 0);
+  return '$' + num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatTimestampLocal(s) {
+  if (!s) return '—';
+  const str = String(s);
+  // Backend devuelve "YYYY-MM-DD HH:MM:SS" en hora del servidor de Apps Script.
+  // Mostramos tal cual con formato visualmente compacto.
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return str;
+  return m[3] + '/' + m[2] + '/' + m[1] + ' ' + m[4] + ':' + m[5];
+}
+
+function calcularTotalesDesdeResultados(resultados) {
+  let bruto = 0, nd = 0, tope = 0;
+  const empleados = {}, proyectos = {};
+  resultados.forEach(function (r) {
+    bruto += r.bruto_total;
+    nd   += r.nomina_directo;
+    tope += r.tope_imss_aplicable;
+    empleados[r.id_empleado] = true;
+    proyectos[r.proyecto] = true;
+  });
+  return {
+    bruto:          round2(bruto),
+    nomina_directo: round2(nd),
+    excedente:      round2(bruto - nd),
+    comision:       round2(bruto * 0.06),
+    a_contadores:   round2(bruto * 1.06),
+    tope_imss:      round2(tope),
+    num_empleados:  Object.keys(empleados).length,
+    num_proyectos:  Object.keys(proyectos).length
+  };
+}
+
+// Adapter: normaliza calcularNominaPreview() y obtenerCalculoNomina() al mismo shape.
+// Nombres canónicos = nombres del snapshot persistido (bruto_base, bruto_total,
+// tope_imss_aplicable, comision, total_neto). El frontend SIEMPRE consume este shape.
+function normalizarCalculo(raw, source) {
+  if (source === 'snapshot') {
+    const resultados = (raw.resultados || []).map(function (r) {
+      return {
+        id_captura:          r.id_captura,
+        id_empleado:         r.id_empleado,
+        empleado_nombre:     r.empleado_nombre || ('(empleado #' + r.id_empleado + ')'),
+        proyecto:            r.proyecto,
+        dias_t:              Number(r.dias_t || 0),
+        dias_d:              Number(r.dias_d || 0),
+        dias_f:              Number(r.dias_f || 0),
+        dias_b:              Number(r.dias_b || 0),
+        dias_pagables:       Number(r.dias_pagables || 0),
+        tarifa_diaria:       Number(r.tarifa_diaria || 0),
+        bruto_base:          Number(r.bruto_base || 0),
+        extras:              Number(r.extras || 0),
+        viaticos:            Number(r.viaticos || 0),
+        bruto_total:         Number(r.bruto_total || 0),
+        tope_imss_aplicable: Number(r.tope_imss_aplicable || 0),
+        nomina_directo:      Number(r.nomina_directo || 0),
+        excedente:           Number(r.excedente || 0),
+        comision:            Number(r.comision || 0),
+        total_neto:          Number(r.total_neto || 0)
+      };
+    });
+    const agregados = (raw.agregados || []).map(function (a) {
+      return {
+        proyecto:                 a.proyecto,
+        total_empleados:          Number(a.total_empleados || 0),
+        total_dias_t:             Number(a.total_dias_t || 0),
+        total_dias_d:             Number(a.total_dias_d || 0),
+        total_bruto:              Number(a.total_bruto || 0),
+        total_nomina_directo:     Number(a.total_nomina_directo || 0),
+        total_excedente:          Number(a.total_excedente || 0),
+        total_comision:           Number(a.total_comision || 0),
+        monto_nomina_transaccion: Number(a.monto_nomina_transaccion || 0)
+      };
+    });
+    return {
+      source: 'snapshot',
+      metadata: {
+        timestamp_calculo: raw.timestamp_calculo,
+        guardado_por:      raw.guardado_por,
+        estado_quincena:   raw.estado_quincena,
+        warnings:          []
+      },
+      resultados: resultados,
+      agregados:  agregados,
+      totales:    calcularTotalesDesdeResultados(resultados)
+    };
+  }
+  // source === 'preview'
+  const resultados = (raw.resultados || []).map(function (r) {
+    return {
+      id_captura:          r.id_captura,
+      id_empleado:         r.empleado_id,
+      empleado_nombre:     r.empleado_nombre || ('(empleado #' + r.empleado_id + ')'),
+      proyecto:            r.proyecto,
+      dias_t:              Number(r.dias_t || 0),
+      dias_d:              Number(r.dias_d || 0),
+      dias_f:              Number(r.dias_f || 0),
+      dias_b:              Number(r.dias_b || 0),
+      dias_pagables:       Number(r.dias_pagables || 0),
+      tarifa_diaria:       Number(r.tarifa_diaria || 0),
+      bruto_base:          Number(r.monto_salario || 0),
+      extras:              Number(r.monto_extras || 0),
+      viaticos:            Number(r.monto_viaticos || 0),
+      bruto_total:         Number(r.bruto_proyecto || 0),
+      tope_imss_aplicable: Number(r.tope_imss_aplicado || 0),
+      nomina_directo:      Number(r.nomina_directo || 0),
+      excedente:           Number(r.excedente || 0),
+      comision:            Number(r.comision_6pct || 0),
+      total_neto:          Number(r.total_a_contadores || 0)
+    };
+  });
+  const agregados = (raw.agregados_proyecto || []).map(function (a) {
+    const totalBruto = Number(a.bruto_total || 0);
+    const totalNd    = Number(a.nomina_directo_total || 0);
+    return {
+      proyecto:                 a.proyecto,
+      total_empleados:          Number(a.num_empleados || 0),
+      total_dias_t:             Number(a.dias_t || 0),
+      total_dias_d:             Number(a.dias_d || 0),
+      total_bruto:              totalBruto,
+      total_nomina_directo:     totalNd,
+      total_excedente:          round2(totalBruto - totalNd),
+      total_comision:           Number(a.comision_6pct || 0),
+      monto_nomina_transaccion: Number(a.total_a_contadores || 0)
+    };
+  });
+  return {
+    source: 'preview',
+    metadata: {
+      timestamp_calculo: null,
+      guardado_por:      null,
+      estado_quincena:   null,
+      warnings:          raw.warnings || []
+    },
+    resultados: resultados,
+    agregados:  agregados,
+    totales:    calcularTotalesDesdeResultados(resultados)
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ PANEL RH                                                                ═══
