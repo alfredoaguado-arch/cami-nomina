@@ -328,10 +328,14 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   <div class="cap-toolbar">
     <div class="cap-toolbar-row">
       <span class="cap-info">Quincena: <b id="aprob-quin-id">—</b></span>
+      <span id="aprob-badge-snapshot"></span>
       <button class="btn btn-secondary btn-sm" onclick="initAprob()">↻ Recargar</button>
     </div>
     <div class="cap-toolbar-row">
       <span class="cap-info" id="aprob-quin-fechas">—</span>
+    </div>
+    <div class="cap-toolbar-row" id="aprob-fila-boton-calcular" style="display:none">
+      <button id="aprob-btn-calcular" class="btn btn-primary btn-block" onclick="irACalcular()">Calcular nómina</button>
     </div>
   </div>
 
@@ -366,6 +370,16 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
   <div id="aprob-cap-lista-emp"></div>
   <div class="fab-bar" id="aprob-cap-fab"></div>
+</div>
+
+<!-- ═══ PANEL APROBACIÓN — VISTA DE CÁLCULO DE NÓMINA (Fase 3b) ═══ -->
+<div id="panel-aprob-calc" class="container" style="display:none">
+  <div class="cap-toolbar" id="aprob-calc-header"></div>
+  <div id="aprob-calc-banner"></div>
+  <div id="aprob-calc-metrics"></div>
+  <div id="aprob-calc-tabla-proyecto"></div>
+  <div id="aprob-calc-detalle-empleado"></div>
+  <div class="fab-bar" id="aprob-calc-fab"></div>
 </div>
 
 <!-- ═══ PANEL ADMINISTRATIVA — Mariana ═══ -->
@@ -800,7 +814,7 @@ function cambiarVista(v) {
 
   vista = v;
   document.querySelectorAll('.tab').forEach(t => {
-    const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap') ? 'aprob' : v;
+    const tabActiva = (v === 'cap-detail') ? 'sup' : (v === 'aprob-cap' || v === 'aprob-calc') ? 'aprob' : v;
     t.classList.toggle('active', t.dataset.tab === tabActiva);
   });
   document.getElementById('panel-rh').style.display       = (v === 'rh')       ? 'block' : 'none';
@@ -808,6 +822,7 @@ function cambiarVista(v) {
   document.getElementById('panel-cap').style.display      = (v === 'cap-detail') ? 'block' : 'none';
   document.getElementById('panel-aprob').style.display    = (v === 'aprob')    ? 'block' : 'none';
   document.getElementById('panel-aprob-cap').style.display = (v === 'aprob-cap') ? 'block' : 'none';
+  document.getElementById('panel-aprob-calc').style.display = (v === 'aprob-calc') ? 'block' : 'none';
   document.getElementById('panel-admin').style.display    = (v === 'admin')    ? 'block' : 'none';
 
   document.getElementById('topbar-subtitle').textContent =
@@ -816,6 +831,7 @@ function cambiarVista(v) {
     v === 'cap-detail' ? 'Nómina · Captura ' + (datosCaptura?.captura?.proyecto || '') :
     v === 'aprob'     ? 'Nómina · Aprobación' :
     v === 'aprob-cap' ? 'Nómina · Revisar ' + (aprobDatosCaptura?.captura?.proyecto || '') :
+    v === 'aprob-calc' ? 'Nómina · Calcular ' + (aprobQuincena ? aprobQuincena.id : '') :
     v === 'admin'     ? 'Nómina · Administrativa' :
     'Nómina';
 
@@ -824,12 +840,14 @@ function cambiarVista(v) {
   if (v === 'cap-detail' && capturaActual)               cargarCaptura(capturaActual);
   if (v === 'aprob')                                     initAprob();
   if (v === 'aprob-cap' && aprobCapturaActual)           cargarCapturaAprob(aprobCapturaActual);
+  if (v === 'aprob-calc')                                initAprobCalc();
   if (v === 'admin')                                     initAdmin();
 }
 
 function onBack() {
   if (vista === 'cap-detail')      { cambiarVista('sup'); return; }
   if (vista === 'aprob-cap')       { cambiarVista('aprob'); return; }
+  if (vista === 'aprob-calc')      { cambiarVista('aprob'); return; }
   window.location.href = HUB_URL;
 }
 
@@ -2143,6 +2161,45 @@ async function volverBorrador() {
 // ═══ FASE 3a: PANEL DE APROBACIÓN                                            ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function puedeCalcularQuincena() {
+  if (!aprobCapturas || aprobCapturas.length === 0) {
+    return { enabled: false, reason: 'Aún no hay capturas en esta quincena' };
+  }
+  const enviadas = aprobCapturas.filter(function (c) { return c.estado === 'ENVIADA'; }).length;
+  if (enviadas > 0) {
+    return { enabled: false, reason: 'Aún hay ' + enviadas + ' captura' + (enviadas === 1 ? '' : 's') + ' pendiente' + (enviadas === 1 ? '' : 's') + ' de revisar' };
+  }
+  return { enabled: true, reason: '' };
+}
+
+function renderAprobHeaderBadge(calc) {
+  const el = document.getElementById('aprob-badge-snapshot');
+  if (!el) return;
+  if (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo) {
+    el.innerHTML = '<span class="snap-badge calculada">✓ Calculada · ' +
+                   escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>';
+  } else {
+    el.innerHTML = '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  }
+}
+
+function renderAprobHeaderBoton() {
+  const fila = document.getElementById('aprob-fila-boton-calcular');
+  const btn  = document.getElementById('aprob-btn-calcular');
+  if (!fila || !btn) return;
+  fila.style.display = 'flex';
+  const estado = puedeCalcularQuincena();
+  if (estado.enabled) {
+    btn.disabled = false;
+    btn.removeAttribute('title');
+    btn.classList.remove('btn-disabled-tooltip');
+  } else {
+    btn.disabled = true;
+    btn.setAttribute('title', estado.reason);
+    btn.classList.add('btn-disabled-tooltip');
+  }
+}
+
 async function initAprob() {
   const lista = document.getElementById('aprob-lista');
   lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando capturas...</div>';
@@ -2150,13 +2207,20 @@ async function initAprob() {
   document.getElementById('aprob-conflictos').innerHTML = '';
 
   try {
-    const [r, c] = await Promise.all([
-      callBackend('listarCapturasParaAprobar', {}),
-      callBackend('detectarConflictos', {})
-    ]);
+    const r = await callBackend('listarCapturasParaAprobar', {});
     aprobQuincena = r.quincena;
     aprobCapturas = r.capturas || [];
+
+    const quincenaId = aprobQuincena ? aprobQuincena.id : null;
+
+    const [c, s] = await Promise.all([
+      callBackend('detectarConflictos', {}),
+      quincenaId
+        ? callBackend('obtenerCalculoNomina', { quincena_id: quincenaId })
+        : Promise.resolve({ ok: true, calculado: false })
+    ]);
     aprobConflictos = c.conflictos || [];
+    aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
 
     document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
     if (aprobQuincena.fecha_inicio) {
@@ -2174,6 +2238,8 @@ async function initAprob() {
 
     renderConflictosBanner();
     renderAprobLista();
+    renderAprobHeaderBadge(aprobCalculoSnapshot);
+    renderAprobHeaderBoton();
   } catch(err) {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
     toast(err.message, 'error');
@@ -2369,6 +2435,21 @@ async function confirmarReabrir() {
     cambiarVista('aprob');
   } catch(err) { toast(err.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══ FASE 3b: VISTA DE CÁLCULO DE NÓMINA                                    ═══
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function irACalcular() {
+  if (!aprobQuincena) { toast('Cargá la quincena primero', 'error'); return; }
+  cambiarVista('aprob-calc');
+}
+
+async function initAprobCalc() {
+  // Stub temporal — Task 3 lo implementa completo
+  document.getElementById('aprob-calc-header').innerHTML =
+    '<div class="cap-toolbar-row"><div class="cap-info">Vista de cálculo (en construcción)</div></div>';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
