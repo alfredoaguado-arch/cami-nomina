@@ -1,6 +1,13 @@
 /**
- * CAMI-Nomina v3.6
+ * CAMI-Nomina v3.7
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.7 (18-may-2026): Snapshot autocontenido — empleado_nombre.
+ *   - Agrega columna `empleado_nombre` en NOMINA_RESULTADOS (col 5, después de id_empleado)
+ *   - Escrito al momento de guardarCalculoNomina (no lookup en lectura)
+ *   - Razón: si se renombra/elimina un empleado del catálogo, el snapshot histórico
+ *     mantiene el nombre vigente al momento del cálculo (verdaderamente inmutable)
+ *   - Requiere recrear NOMINA_RESULTADOS (manual delete previo si ya existe con 22 cols)
  *
  * v3.6 (18-may-2026): Auditabilidad del snapshot.
  *   - Agrega columna `guardado_por` en NOMINA_RESULTADOS (col 22) y NOMINA_AGREGADOS (col 12)
@@ -42,7 +49,7 @@
  *   - limpiarCaptura(id)    — Limpia días/extras/viáticos de una captura, regresa a BORRADOR
  */
 
-const VERSION = '3.6';
+const VERSION = '3.7';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -84,7 +91,7 @@ const HEADERS = {
   CAPTURA_EXTRAS:   ['id','captura_id','empleado_id','horas','monto','descripcion'],
   CAPTURA_VIATICOS: ['id','captura_id','empleado_id','concepto','monto'],
   APROBACIONES_LOG: ['id','captura_id','accion','usuario','fecha','comentario'],
-  NOMINA_RESULTADOS: ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por'],
+  NOMINA_RESULTADOS: ['id_resultado','id_quincena','id_captura','id_empleado','empleado_nombre','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por'],
   NOMINA_AGREGADOS:  ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo','guardado_por']
 };
 
@@ -2311,8 +2318,8 @@ function handleGuardarCalculoNomina(data) {
     const timestampCalculo = nowStr();
     const guardadoPor = userName(data);
 
-    // Construir filas para NOMINA_RESULTADOS (22 columnas)
-    // ['id_resultado','id_quincena','id_captura','id_empleado','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por']
+    // Construir filas para NOMINA_RESULTADOS (23 columnas)
+    // ['id_resultado','id_quincena','id_captura','id_empleado','empleado_nombre','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por']
     const proximoIdR = nextId(shR, 0);
     const filasR = calc.resultados.map(function (r, idx) {
       return [
@@ -2320,6 +2327,7 @@ function handleGuardarCalculoNomina(data) {
         quincenaId,                  // id_quincena
         r.id_captura,                // id_captura
         r.empleado_id,               // id_empleado
+        r.empleado_nombre,           // empleado_nombre
         r.proyecto,                  // proyecto
         r.dias_t,                    // dias_t
         r.dias_d,                    // dias_d
