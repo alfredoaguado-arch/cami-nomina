@@ -1,6 +1,27 @@
 /**
- * CAMI-Nomina v3.7
+ * CAMI-Nomina v3.8.1
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.8.1 (20-may-2026): Ajuste a quincenaParaFecha.
+ *   - Bug remanente v3.8: días jueves/viernes/sábado de la primera semana
+ *     de una quincena nueva caían en la quincena anterior por off-by-one.
+ *   - Fix: usar ancla fija (jueves 7-may-2026) y calcular múltiplos de 14
+ *     días desde ahí. Elimina ambigüedad de "qué jueves es el de inicio".
+ *   - Test _testQuincenaParaFecha valida 6 casos (incluye jueves de
+ *     transición y fecha de pago).
+ *
+ * v3.8 (20-may-2026): Fix quincenaParaFecha - off-by-one en cálculo de
+ *   quincena vigente.
+ *   - Bug: la función retrocedía al jueves más reciente, lo cual hacía que
+ *     la quincena cambiara desde el jueves siguiente al cierre (correcto:
+ *     cambia el jueves del día siguiente al miércoles de cierre).
+ *   - Resultado del bug: hoy mié 20-may devolvía quincena 14-may a 27-may
+ *     cuando correcto era 7-may a 20-may.
+ *   - Fix: calcular el cierre como el primer miércoles >= fecha de
+ *     referencia. Inicio = cierre - 13, Pago = cierre + 3.
+ *   - Sin cambios en otros módulos. quincenaAnterior(n) sigue funcionando
+ *     porque consume el id de quincenaParaFecha y retrocede 14*n días.
+ *   - Test aislado en _testQuincenaParaFecha (correr desde editor).
  *
  * v3.7 (18-may-2026): Snapshot autocontenido — empleado_nombre.
  *   - Agrega columna `empleado_nombre` en NOMINA_RESULTADOS (col 5, después de id_empleado)
@@ -47,9 +68,10 @@
  *   - asegurarHojasNomina() — Asegura solo NOMINA_RESULTADOS y NOMINA_AGREGADOS
  *   - autorizarPermisos()   — Forzar prompt OAuth tras crear el script
  *   - limpiarCaptura(id)    — Limpia días/extras/viáticos de una captura, regresa a BORRADOR
+ *   - _testQuincenaParaFecha() — Test aislado del cálculo de quincena (v3.8)
  */
 
-const VERSION = '3.7';
+const VERSION = '3.8.1';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -565,23 +587,50 @@ function handleMisProyectos(data) {
 
 // ─── QUINCENAS ───────────────────────────────────────────────────────────────
 
+/**
+ * v3.8.1: calcula la quincena vigente para una fecha de referencia,
+ * usando una ANCLA fija.
+ *
+ * Modelo: quincenas jueves -> miércoles (14 días), pago el sábado siguiente.
+ * Ancla: jueves 7-may-2026 = inicio de la quincena "2026-05-07" (confirmado
+ * explícitamente por Alfredo). Cualquier otra quincena se calcula como
+ * múltiplo de 14 días desde el ancla, lo que garantiza alineación correcta
+ * del calendario sin off-by-one en los jueves de inicio.
+ *
+ * Razón del ancla (vs. el fix v3.8): "retroceder al jueves anterior" no
+ * distingue entre el jueves de inicio y el jueves de la segunda semana de
+ * una quincena — ambos están a < 14 días de retroceso pero pertenecen a
+ * quincenas distintas. El ancla elimina esa ambigüedad.
+ *
+ * Tabla de verificación:
+ *   | Fecha de referencia       | Días desde ancla | Períodos | Inicio    |
+ *   |---------------------------|------------------|----------|-----------|
+ *   | jue 7-may-2026 (HOY-13)   | 0                | 0        | 7-may     |
+ *   | mié 20-may-2026 (HOY)     | 13               | 0        | 7-may     |
+ *   | jue 21-may-2026 (HOY+1)   | 14               | 1        | 21-may    |
+ *   | vie 22-may-2026           | 15               | 1        | 21-may    |
+ *   | sáb 23-may-2026           | 16               | 1        | 21-may    |
+ *   | dom 17-may-2026           | 10               | 0        | 7-may     |
+ *   | mié 3-jun-2026            | 27               | 1        | 21-may    |
+ *   | jue 4-jun-2026            | 28               | 2        | 4-jun     |
+ *   | jue 23-abr-2026 (atrás)   | -14              | -1       | 23-abr    |
+ */
 function quincenaParaFecha(fechaRef) {
+  const ANCLA = new Date(2026, 4, 7);  // 7-may-2026 (mes 4 = mayo, 0-indexado)
   const ref = new Date(fechaRef.getFullYear(), fechaRef.getMonth(), fechaRef.getDate());
-  const diaSemana = ref.getDay();
-  let retroceso = (diaSemana - 4 + 7) % 7;
-  const inicio = new Date(ref);
-  inicio.setDate(ref.getDate() - retroceso);
-
-  const fin = new Date(inicio);
-  fin.setDate(inicio.getDate() + 13);
-
-  const pago = new Date(fin);
-  pago.setDate(fin.getDate() + 3);
-
+  const MS_DIA = 24 * 60 * 60 * 1000;
+  const diasDesdeAncla = Math.floor((ref.getTime() - ANCLA.getTime()) / MS_DIA);
+  const periodos = Math.floor(diasDesdeAncla / 14);  // puede ser negativo para fechas pasadas
+  const inicio = new Date(ANCLA);
+  inicio.setDate(ANCLA.getDate() + periodos * 14);
+  const cierre = new Date(inicio);
+  cierre.setDate(inicio.getDate() + 13);
+  const pago = new Date(cierre);
+  pago.setDate(cierre.getDate() + 3);
   return {
     id:            Utilities.formatDate(inicio, TZ, 'yyyy-MM-dd'),
     fecha_inicio:  Utilities.formatDate(inicio, TZ, 'yyyy-MM-dd'),
-    fecha_fin:     Utilities.formatDate(fin,    TZ, 'yyyy-MM-dd'),
+    fecha_fin:     Utilities.formatDate(cierre, TZ, 'yyyy-MM-dd'),
     fecha_pago:    Utilities.formatDate(pago,   TZ, 'yyyy-MM-dd')
   };
 }
@@ -2557,31 +2606,104 @@ function limpiarCaptura(capturaId) {
   Logger.log('✓ Captura ' + capturaId + ' limpiada.');
 }
 
-// ─── FUNCIONES DE PRUEBA (correr desde el editor) ────────────────────────────
+// ─── TESTS AISLADOS ──────────────────────────────────────────────────────────
 
-function testInvalidar() {
-  const fake = {
-    quincena_id: '2026-05-07',
-    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
-  };
-  const resp = handleInvalidarCalculoNomina(fake);
-  Logger.log(resp.getContent());
+/**
+ * v3.8 — Test aislado de quincenaParaFecha. Correr desde el editor.
+ * No toca el sheet. Espera 6 casos PASS en el log.
+ */
+function _testQuincenaParaFecha() {
+  const casos = [
+    { desc: 'miercoles 20-may-2026 (HOY)', fecha: new Date(2026, 4, 20), esperaInicio: '2026-05-07', esperaFin: '2026-05-20', esperaPago: '2026-05-23' },
+    { desc: 'jueves 21-may-2026',           fecha: new Date(2026, 4, 21), esperaInicio: '2026-05-21', esperaFin: '2026-06-03', esperaPago: '2026-06-06' },
+    { desc: 'viernes 22-may-2026',          fecha: new Date(2026, 4, 22), esperaInicio: '2026-05-21', esperaFin: '2026-06-03', esperaPago: '2026-06-06' },
+    { desc: 'domingo 17-may-2026',          fecha: new Date(2026, 4, 17), esperaInicio: '2026-05-07', esperaFin: '2026-05-20', esperaPago: '2026-05-23' },
+    { desc: 'jueves 7-may-2026 (inicio)',   fecha: new Date(2026, 4,  7), esperaInicio: '2026-05-07', esperaFin: '2026-05-20', esperaPago: '2026-05-23' },
+    { desc: 'sabado 23-may-2026 (pago)',    fecha: new Date(2026, 4, 23), esperaInicio: '2026-05-21', esperaFin: '2026-06-03', esperaPago: '2026-06-06' }
+  ];
+  let allPass = true;
+  casos.forEach(function (c) {
+    const q = quincenaParaFecha(c.fecha);
+    const pass = (q.id === c.esperaInicio) && (q.fecha_fin === c.esperaFin) && (q.fecha_pago === c.esperaPago);
+    if (!pass) allPass = false;
+    Logger.log((pass ? 'PASS ' : 'FAIL ') + c.desc +
+      ' -> id=' + q.id + ' fin=' + q.fecha_fin + ' pago=' + q.fecha_pago +
+      (pass ? '' : ' (esperado: id=' + c.esperaInicio + ' fin=' + c.esperaFin + ' pago=' + c.esperaPago + ')'));
+  });
+  Logger.log(allPass ? 'TODOS LOS CASOS PASARON' : 'HAY FALLAS - REVISAR');
 }
-
-function testObtener() {
-  const fake = {
-    quincena_id: '2026-05-07',
-    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
-  };
-  const resp = handleObtenerCalculoNomina(fake);
-  Logger.log(resp.getContent());
+function _verQuincenasAhora() {
+  const sh = getSheet(HOJAS.QUINCENAS);
+  const datos = sh.getDataRange().getValues();
+  for (var i = 0; i < datos.length; i++) {
+    Logger.log('Fila ' + i + ': ' + JSON.stringify(datos[i]));
+  }
 }
+function _verCapturasDeQuincena_2026_05_14() {
+  const sh = getSheet(HOJAS.CAPTURAS);
+  const datos = sh.getDataRange().getValues();
+  Logger.log('Headers: ' + JSON.stringify(datos[0]));
+  let cuenta = 0;
+  for (var i = 1; i < datos.length; i++) {
+    if (String(datos[i][1]) === '2026-05-14' || datos[i].indexOf('2026-05-14') >= 0) {
+      Logger.log('Fila ' + i + ': ' + JSON.stringify(datos[i]));
+      cuenta++;
+    }
+  }
+  Logger.log('Total capturas vinculadas: ' + cuenta);
+}
+function _borrarQuincena_2026_05_14() {
+  const ss = SpreadsheetApp.getActive();
 
-function testGuardar() {
-  const fake = {
-    quincena_id: '2026-05-07',
-    _user: { nombre: 'Alfredo Aguado', apps: 'nomina-aprobar' }
-  };
-  const resp = handleGuardarCalculoNomina(fake);
-  Logger.log(resp.getContent());
+  // 1. Borrar captura ID 1 (la única vinculada a esta quincena)
+  // No tiene CAPTURA_DIAS, CAPTURA_EXTRAS ni CAPTURA_VIATICOS porque esta en
+  // BORRADOR sin datos. Aun asi limpiamos por si acaso (defensa profundidad).
+  const idCaptura = 1;
+  const hojasHijas = ['CAPTURA_DIAS', 'CAPTURA_EXTRAS', 'CAPTURA_VIATICOS', 'APROBACIONES_LOG'];
+  hojasHijas.forEach(function(nombre) {
+    const sh = ss.getSheetByName(nombre);
+    if (!sh) return;
+    const rows = sh.getDataRange().getValues();
+    if (rows.length < 2) return;
+    const headers = rows[0];
+    const colCap = headers.indexOf('captura_id');
+    if (colCap < 0) return;
+    let borradas = 0;
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (String(rows[i][colCap]) === String(idCaptura)) {
+        sh.deleteRow(i + 1);
+        borradas++;
+      }
+    }
+    Logger.log(nombre + ': borradas ' + borradas + ' filas vinculadas a captura ' + idCaptura);
+  });
+
+  // 2. Borrar la captura
+  const shCap = ss.getSheetByName('CAPTURAS');
+  const rowsC = shCap.getDataRange().getValues();
+  for (let i = rowsC.length - 1; i >= 1; i--) {
+    if (String(rowsC[i][0]) === String(idCaptura)) {
+      shCap.deleteRow(i + 1);
+      Logger.log('CAPTURAS: borrada fila captura id=' + idCaptura);
+    }
+  }
+
+  // 3. Borrar la quincena
+  const shQ = ss.getSheetByName('QUINCENAS');
+  const rowsQ = shQ.getDataRange().getValues();
+  for (let i = rowsQ.length - 1; i >= 1; i--) {
+    if (String(rowsQ[i][0]) === '2026-05-14') {
+      shQ.deleteRow(i + 1);
+      Logger.log('QUINCENAS: borrada fila quincena 2026-05-14');
+    }
+  }
+
+  // 4. Estado final
+  Logger.log('=== ESTADO FINAL ===');
+  ['QUINCENAS', 'CAPTURAS', 'CAPTURA_DIAS', 'CAPTURA_EXTRAS', 'CAPTURA_VIATICOS', 'APROBACIONES_LOG'].forEach(function(nombre) {
+    const sh = ss.getSheetByName(nombre);
+    if (!sh) return;
+    const rows = sh.getDataRange().getValues();
+    Logger.log(nombre + ': ' + Math.max(0, rows.length - 1) + ' filas de datos');
+  });
 }
