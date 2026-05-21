@@ -746,6 +746,15 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 /**
  * cami-nomina frontend
  *
+ * v3.6 (20-may-2026): fix card "Comisión 6%" del preview de cálculo.
+ *   - calcularTotalesDesdeResultados sumaba comision/a_contadores como
+ *     bruto_total * 0.06 / 1.06. Con el modelo A/B/C del backend v3.8.3,
+ *     las filas caso B (IMSS, bruto <= tope) no pasan por contadores y
+ *     aportan $0 de comisión — la fórmula sobre el bruto total las contaba.
+ *   - Fix: sumar comision y total_neto por fila (sum(filas.comision_6pct)).
+ *     El adapter normalizarCalculo ya normaliza ambos campos por fila para
+ *     preview y snapshot, así que el fix cubre los dos caminos.
+ *
  * v3.5 (18-may-2026): Fase 3b — cálculo y snapshot de nómina.
  *   - Nueva vista panel-aprob-calc con dos estados (sin snapshot / calculada).
  *   - Adapter normalizarCalculo(raw, source) unifica preview y snapshot al
@@ -798,7 +807,7 @@ let quincenasCapturablesAdmin = [];  // v3.3: lista para Mariana
 let adminQuincenaSeleccionada = null; // v3.3
 
 // ═══ FASE 3b FRONTEND: estado del cálculo de nómina ═══
-const VERSION_FRONTEND = '3.5';
+const VERSION_FRONTEND = '3.6';
 let aprobCalculoSnapshot = null;  // shape canónico (source='snapshot') o null si no hay
 let aprobCalculoPreview = null;   // shape canónico (source='preview') o null
 let aprobCalculoLoading = false;  // anti-doble-click en botones Recalcular/Guardar
@@ -967,12 +976,17 @@ function formatTimestampLocal(s) {
 }
 
 function calcularTotalesDesdeResultados(resultados) {
-  let bruto = 0, nd = 0, tope = 0;
+  // comision y a_contadores se SUMAN por fila — no se derivan del bruto total.
+  // Con el modelo A/B/C, las filas caso B (IMSS, bruto <= tope) no pasan por
+  // contadores: aportan $0 de comisión. bruto * 0.06 sobrecontaría esos brutos.
+  let bruto = 0, nd = 0, tope = 0, comision = 0, aContadores = 0;
   const empleados = {}, proyectos = {};
   resultados.forEach(function (r) {
-    bruto += r.bruto_total;
-    nd   += r.nomina_directo;
-    tope += r.tope_imss_aplicable;
+    bruto       += r.bruto_total;
+    nd          += r.nomina_directo;
+    tope        += r.tope_imss_aplicable;
+    comision    += r.comision;
+    aContadores += r.total_neto;
     empleados[r.id_empleado] = true;
     proyectos[r.proyecto] = true;
   });
@@ -980,8 +994,8 @@ function calcularTotalesDesdeResultados(resultados) {
     bruto:          round2(bruto),
     nomina_directo: round2(nd),
     excedente:      round2(bruto - nd),
-    comision:       round2(bruto * 0.06),
-    a_contadores:   round2(bruto * 1.06),
+    comision:       round2(comision),
+    a_contadores:   round2(aContadores),
     tope_imss:      round2(tope),
     num_empleados:  Object.keys(empleados).length,
     num_proyectos:  Object.keys(proyectos).length
