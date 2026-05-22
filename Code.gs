@@ -277,7 +277,7 @@ function doPost(e) {
 
 function appKeyForAction(action) {
   const rh = ['listarEmpleados','obtenerEmpleado','crearEmpleado','actualizarEmpleado','bajaEmpleado','reactivarEmpleado'];
-  const sup = ['misProyectos','quincenaActual','quincenasCapturables','listarQuincenas','misCapturas','crearCaptura','obtenerCaptura',
+  const sup = ['misProyectos','quincenaActual','quincenasCapturables','misCapturas','crearCaptura','obtenerCaptura',
                'agregarEmpleadoCap','quitarEmpleadoCap','marcarDia','guardarExtra','eliminarExtra',
                'guardarViatico','eliminarViatico','enviarCaptura','volverBorrador','listarEmpleadosActivos','capturaAnterior'];
   const aprob = ['listarCapturasParaAprobar','obtenerCapturaParaAprobar','aprobarCaptura',
@@ -286,6 +286,7 @@ function appKeyForAction(action) {
   // reabrirCapturaAdmin: validamos en el handler (nomina-finanzas O nomina-aprobar)
   // invalidarCalculoNomina, obtenerCalculoNomina, guardarCalculoNomina:
   //   validamos en el handler (nomina-finanzas O nomina-aprobar, mismo patrón)
+  // listarQuincenas: validamos en el handler (nomina-supervisor O nomina-aprobar O nomina-finanzas)
   if (rh.indexOf(action) >= 0)    return 'nomina-rh';
   if (sup.indexOf(action) >= 0)   return 'nomina-supervisor';
   if (aprob.indexOf(action) >= 0) return 'nomina-aprobar';
@@ -905,17 +906,43 @@ function handleQuincenasCapturables(data) {
 }
 
 function handleListarQuincenas(data) {
+  // Multi-app: supervisor (uso original Fase 2), aprobar (selector del panel Aprobación, v3.9),
+  // finanzas (vista solo-lectura del snapshot, v3.9). appKeyForAction devuelve null para
+  // esta action; el gate vive aquí, mismo patrón que obtenerCalculoNomina (Bloque 4).
+  if (!userTieneApp(data, 'nomina-supervisor') &&
+      !userTieneApp(data, 'nomina-aprobar') &&
+      !userTieneApp(data, 'nomina-finanzas')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-supervisor, nomina-aprobar o nomina-finanzas)' });
+  }
+
+  asegurarHojasNomina();
+
   const sh = getSheet(HOJAS.QUINCENAS);
   let lista = rowsToObjects(sh.getDataRange().getValues());
+
+  // Set de id_quincena con snapshot guardado — leemos NOMINA_RESULTADOS UNA sola vez.
+  // Columna 1 = id_quincena (ver HEADERS.NOMINA_RESULTADOS).
+  const conSnapshot = {};
+  const shR = getSheet(HOJAS.NOMINA_RESULTADOS);
+  if (shR && shR.getLastRow() > 1) {
+    const rows = shR.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      const qid = normFecha(rows[i][1]);
+      if (qid) conSnapshot[qid] = true;
+    }
+  }
+
   lista = lista.map(function (q) {
+    const qid = normFecha(q.id);
     return {
-      id:               normFecha(q.id),
+      id:               qid,
       fecha_inicio:     normFecha(q.fecha_inicio),
       fecha_fin:        normFecha(q.fecha_fin),
       fecha_pago:       normFecha(q.fecha_pago),
       estado:           q.estado,
       aprobada_por:     q.aprobada_por,
-      fecha_aprobacion: q.fecha_aprobacion
+      fecha_aprobacion: q.fecha_aprobacion,
+      estado_calculo:   conSnapshot[qid] ? 'calculada' : 'sin-snapshot'
     };
   });
   lista.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
