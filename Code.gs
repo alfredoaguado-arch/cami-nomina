@@ -1,6 +1,61 @@
 /**
- * CAMI-Nomina v3.8.1
+ * CAMI-Nomina v3.8.3
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.8.3 (20-may-2026): Modelo de pago COMPLETO — 3 casos (A/B/C).
+ *
+ *   Bug acumulado v3.8.1 y anteriores: el cálculo trataba a TODOS los IMSS
+ *   con la misma fórmula (tope IMSS prorrateado), sin distinguir entre
+ *   empleados con bruto > tope y empleados con bruto ≤ tope. Y trataba a
+ *   NO_IMSS como si recibieran NOMINA_DIRECTO por su bruto entero.
+ *
+ *   Modelo correcto (fijado tras validación 20-may-2026):
+ *
+ *   CASO A — IMSS con bruto > tope IMSS quincenal ($4,410.56):
+ *     - NOMINA_DIRECTO = tope IMSS, prorrateado por días pagables entre proyectos.
+ *     - EXCEDENTE = bruto − tope. Va por contadores (no se registra como tx).
+ *     - NOMINA del proyecto incluye este bruto: contribuye bruto × 1.06.
+ *     - REINTEGRO_NOMINA recibe el tope (Alfredo → CAMI).
+ *
+ *   CASO B — IMSS con bruto ≤ tope IMSS:
+ *     - NOMINA_DIRECTO = bruto entero. CAMI le paga directo como proveedor.
+ *     - EXCEDENTE = $0. Contadores NO intervienen.
+ *     - NOMINA del proyecto NO incluye este bruto.
+ *     - $0 comisión 6% sobre este bruto.
+ *     - $0 REINTEGRO_NOMINA.
+ *
+ *   CASO C — NO_IMSS (sin tope, ej. Mariana, Eduardo de Hoyos):
+ *     - NOMINA_DIRECTO = $0. CAMI NO paga directo.
+ *     - EXCEDENTE = bruto entero. Va por contadores.
+ *     - NOMINA del proyecto incluye este bruto: contribuye bruto × 1.06.
+ *     - $0 REINTEGRO.
+ *
+ *   Semántica de campos en NOMINA_RESULTADOS:
+ *
+ *   | Campo              | Caso A           | Caso B    | Caso C     |
+ *   |--------------------|------------------|-----------|------------|
+ *   | tope_imss_aplicable| tope prorrateado | $0        | $0         |
+ *   | nomina_directo     | tope prorrateado | bruto fila| $0         |
+ *   | excedente          | bruto − tope     | $0        | bruto fila |
+ *   | comision           | bruto × 0.06     | $0        | bruto × 0.06|
+ *   | total_neto         | bruto × 1.06     | $0        | bruto × 1.06|
+ *
+ *   Cuadre §2.7: NOMINA + NOMINA_DIRECTO − REINTEGRO = (brutos A+C)×1.06 + brutos B
+ *
+ *   Implicación: monto_nomina_transaccion del proyecto = suma de
+ *   total_neto de sus filas (casos B contribuyen $0).
+ *
+ *   Impacto en quincena 2026-05-07:
+ *     - Casos A: 6 empleados (Jose Miguel, Paola F., Abraham Juárez, Esquivel
+ *       Santiago, Morales Macías, Hernández Sánchez Johan)
+ *     - Casos B: 4 empleados (Flores Valencia, Esquivel Gutiérrez Fernando,
+ *       Esquivel Gutiérrez Juan, Hernández Sánchez Jose Eduardo)
+ *     - Casos C: 2 empleados (Mariana, Eduardo de Hoyos)
+ *     - Bruto caso B: $9,816.67 — sale de "a contadores" y se paga directo
+ *     - Total a contadores: $75,103.79 → $64,698.12
+ *     - Total comisión 6%: $4,251.16 → $3,662.16
+ *     - REINTEGRO total: $36,280.03 → $26,463.36
+ *     - NOMINA_DIRECTO total: NO cambia ($36,280.03, suma topes A + brutos B)
  *
  * v3.8.1 (20-may-2026): Ajuste a quincenaParaFecha.
  *   - Bug remanente v3.8: días jueves/viernes/sábado de la primera semana
@@ -71,7 +126,7 @@
  *   - _testQuincenaParaFecha() — Test aislado del cálculo de quincena (v3.8)
  */
 
-const VERSION = '3.8.1';
+const VERSION = '3.8.3';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -588,32 +643,68 @@ function handleMisProyectos(data) {
 // ─── QUINCENAS ───────────────────────────────────────────────────────────────
 
 /**
- * v3.8.1: calcula la quincena vigente para una fecha de referencia,
- * usando una ANCLA fija.
+ * v3.8 FIX: calcula la quincena vigente para una fecha de referencia.
  *
  * Modelo: quincenas jueves -> miércoles (14 días), pago el sábado siguiente.
- * Ancla: jueves 7-may-2026 = inicio de la quincena "2026-05-07" (confirmado
- * explícitamente por Alfredo). Cualquier otra quincena se calcula como
- * múltiplo de 14 días desde el ancla, lo que garantiza alineación correcta
- * del calendario sin off-by-one en los jueves de inicio.
+ * Una fecha de referencia pertenece a la quincena cuyo MIÉRCOLES DE CIERRE
+ * es el primer miércoles >= fechaRef. Esto hace que la quincena cambie al
+ * día siguiente del cierre (jueves), no al jueves anterior.
  *
- * Razón del ancla (vs. el fix v3.8): "retroceder al jueves anterior" no
- * distingue entre el jueves de inicio y el jueves de la segunda semana de
- * una quincena — ambos están a < 14 días de retroceso pero pertenecen a
- * quincenas distintas. El ancla elimina esa ambigüedad.
+ * Bug v3.7 y anteriores: retrocedía al jueves más reciente, lo cual hacía
+ * que hoy mié 20-may devolviera la quincena 14-may a 27-may. El correcto
+ * es 7-may a 20-may, pago 23-may.
  *
  * Tabla de verificación:
- *   | Fecha de referencia       | Días desde ancla | Períodos | Inicio    |
- *   |---------------------------|------------------|----------|-----------|
- *   | jue 7-may-2026 (HOY-13)   | 0                | 0        | 7-may     |
- *   | mié 20-may-2026 (HOY)     | 13               | 0        | 7-may     |
- *   | jue 21-may-2026 (HOY+1)   | 14               | 1        | 21-may    |
- *   | vie 22-may-2026           | 15               | 1        | 21-may    |
- *   | sáb 23-may-2026           | 16               | 1        | 21-may    |
- *   | dom 17-may-2026           | 10               | 0        | 7-may     |
- *   | mié 3-jun-2026            | 27               | 1        | 21-may    |
- *   | jue 4-jun-2026            | 28               | 2        | 4-jun     |
- *   | jue 23-abr-2026 (atrás)   | -14              | -1       | 23-abr    |
+ *   | Hoy           | Cierre próximo | Inicio (cierre-13) | Pago (cierre+3) |
+ *   |---------------|----------------|--------------------|-----------------|
+ *   | mié 20-may    | mié 20-may     | jue 7-may          | sáb 23-may      |
+ *   | jue 21-may    | mié 3-jun      | jue 21-may         | sáb 6-jun       |
+ *   | vie 22-may    | mié 3-jun      | jue 21-may         | sáb 6-jun       |
+ *   | dom 17-may    | mié 20-may     | jue 7-may          | sáb 23-may      |
+ *   | jue 7-may     | mié 20-may     | jue 7-may          | sáb 23-may      |
+ */
+// ============================================================================
+// FIX v3.8.1: quincenaParaFecha con ANCLA fija
+// ============================================================================
+//
+// Razón del ajuste sobre v3.8:
+//   El fix anterior tenía off-by-one con días jueves/viernes/sábado de la
+//   primera semana de una quincena nueva. Causa: "retroceder al jueves
+//   anterior" no distingue entre el jueves de inicio y el jueves de la
+//   segunda semana — ambos están a < 14 días de retroceso, pero pertenecen
+//   a quincenas distintas.
+//
+// Solución: usar un jueves conocido como ANCLA y calcular múltiplos de 14
+// días desde ahí. Anclaje elegido: jueves 7-may-2026, inicio de la quincena
+// "2026-05-07" (confirmado explícitamente por Alfredo).
+//
+// Tabla de verificación completa:
+//   | Fecha de referencia       | Días desde ancla | Períodos | Inicio    |
+//   |---------------------------|------------------|----------|-----------|
+//   | jue 7-may-2026 (HOY-13)   | 0                | 0        | 7-may     |
+//   | mié 20-may-2026 (HOY)     | 13               | 0        | 7-may     |
+//   | jue 21-may-2026 (HOY+1)   | 14               | 1        | 21-may    |
+//   | vie 22-may-2026           | 15               | 1        | 21-may    |
+//   | sáb 23-may-2026           | 16               | 1        | 21-may    |
+//   | dom 17-may-2026           | 10               | 0        | 7-may     |
+//   | mié 3-jun-2026            | 27               | 1        | 21-may    |
+//   | jue 4-jun-2026            | 28               | 2        | 4-jun     |
+//   | jue 23-abr-2026 (atrás)   | -14              | -1       | 23-abr    |
+//
+// 
+// ============================================================================
+// QUINCENA_PARA_FECHA_v3.8.1 — Reemplaza la función actual
+// ============================================================================
+
+/**
+ * v3.8.1: calcula la quincena vigente usando ANCLA fija.
+ *
+ * Modelo: quincenas jueves -> miércoles (14 días), pago el sábado siguiente.
+ * Ancla: jueves 7-may-2026 = inicio de la quincena "2026-05-07".
+ *
+ * Cualquier otra quincena se calcula como múltiplo de 14 días desde el ancla.
+ * Esto garantiza alineación correcta del calendario sin off-by-one en los
+ * jueves de inicio.
  */
 function quincenaParaFecha(fechaRef) {
   const ANCLA = new Date(2026, 4, 7);  // 7-may-2026 (mes 4 = mayo, 0-indexado)
@@ -634,6 +725,21 @@ function quincenaParaFecha(fechaRef) {
     fecha_pago:    Utilities.formatDate(pago,   TZ, 'yyyy-MM-dd')
   };
 }
+
+
+// ============================================================================
+// CHANGELOG_v3.8.1 — agregar al inicio del archivo, antes de v3.8
+// ============================================================================
+
+/*
+ * v3.8.1 (20-may-2026): Ajuste a quincenaParaFecha.
+ *   - Bug remanente v3.8: días jueves/viernes/sábado de la primera semana
+ *     de una quincena nueva caían en la quincena anterior por off-by-one.
+ *   - Fix: usar ancla fija (jueves 7-may-2026) y calcular múltiplos de 14
+ *     días desde ahí. Elimina ambigüedad de "qué jueves es el de inicio".
+ *   - Test _testQuincenaParaFecha valida 6 casos (incluye jueves de
+ *     transición y fecha de pago).
+ */
 
 function quincenaAnterior(quincenaId, n) {
   if (!n) n = 1;
@@ -1829,14 +1935,26 @@ function handleReabrirCapturaAdmin(data) {
 // ═══ FASE 3b — Cálculo de nómina                                             ═══
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Modelo:
+// Modelo (v3.8.3 — 3 casos):
 //   - bruto = (T + D) × tarifa + extras + viáticos
 //   - Tope IMSS $4,410.56 quincenal por empleado IMSS
-//   - CAMI paga el tope vía NOMINA_DIRECTO (proporcional a días por proyecto)
-//   - Contadores dispersan el excedente (no se registra en TRANSACCIONES)
-//   - NO_IMSS: CAMI paga TODO vía NOMINA_DIRECTO
-//   - NOMINA a contadores: bruto_proyecto × 1.06 (comisión 6% adentro)
-//   - REINTEGRO: 1 fila por quincena, proyecto=TRANSITO, suma topes IMSS
+//
+//   CASO A — IMSS con bruto > tope:
+//     · NOMINA_DIRECTO = tope IMSS prorrateado por días T+D entre proyectos
+//     · Contadores dispersan el excedente (no se registra en TRANSACCIONES)
+//     · NOMINA proyecto = bruto × 1.06 (comisión 6% adentro)
+//     · REINTEGRO recibe el tope
+//
+//   CASO B — IMSS con bruto ≤ tope:
+//     · NOMINA_DIRECTO = bruto entero (CAMI paga directo, como proveedor)
+//     · NO pasa por contadores, NO comisión 6%, NO REINTEGRO
+//     · Bruto NO entra en NOMINA del proyecto
+//
+//   CASO C — NO_IMSS:
+//     · NOMINA_DIRECTO = $0
+//     · Contadores dispersan TODO el bruto (no se registra)
+//     · NOMINA proyecto = bruto × 1.06
+//     · NO REINTEGRO
 //
 // Endpoints (todos cableados en doPost desde Bloque 7):
 //   - calcularNominaPreview — preview en vivo, no escribe
@@ -1991,7 +2109,14 @@ function calcularNomina(quincenaId) {
     totalesEmpleado[a.empleado_id].bruto_total += a.bruto_proyecto;
   });
 
-  // 6. Aplicar tope IMSS y calcular NOMINA_DIRECTO por (empleado, proyecto)
+  // 6. Clasificar cada empleado en caso A, B o C y aplicar reglas de pago
+  //
+  //   A: IMSS con bruto_total > tope IMSS → NOMINA_DIRECTO = tope, va a contadores
+  //   B: IMSS con bruto_total ≤ tope IMSS → NOMINA_DIRECTO = bruto, NO va a contadores
+  //   C: NO_IMSS → NOMINA_DIRECTO = $0, bruto entero va a contadores
+  //
+  // El caso se determina por empleado (no por fila empleado×proyecto), luego se
+  // prorratea entre los proyectos del empleado proporcional a días pagables.
   const filasNominaDirecto = [];
   Object.keys(agregado).forEach(function (k) {
     const a = agregado[k];
@@ -1999,29 +2124,53 @@ function calcularNomina(quincenaId) {
     if (!emp) return;
     const tipo = emp.tipo;
     const totales = totalesEmpleado[a.empleado_id];
-    let ndEmpleado;
-    if (tipo === 'IMSS') {
-      ndEmpleado = Math.min(totales.bruto_total, TOPE_IMSS);
-    } else {
-      ndEmpleado = totales.bruto_total;
-    }
     const proporcion = totales.dias_pagables > 0 ? a.dias_pagables / totales.dias_pagables : 0;
-    const ndProyecto = ndEmpleado * proporcion;
-    a.tope_imss_aplicado = (tipo === 'IMSS') ? ndEmpleado * proporcion : 0;
-    a.nomina_directo = ndProyecto;
-    a.comision_6pct = a.bruto_proyecto * COMISION;
-    a.total_a_contadores = a.bruto_proyecto * (1 + COMISION);
+
+    // Clasificación A/B/C
+    let caso;
+    if (tipo === 'IMSS') {
+      caso = (totales.bruto_total > TOPE_IMSS) ? 'A' : 'B';
+    } else {
+      caso = 'C';
+    }
+    a.caso_pago = caso;
+
+    // Calcular nomina_directo, tope_imss_aplicable, excedente, comisión, total_neto
+    // segun el caso
+    if (caso === 'A') {
+      // NOMINA_DIRECTO = tope prorrateado. Bruto fila va a contadores con comisión.
+      a.nomina_directo = TOPE_IMSS * proporcion;
+      a.tope_imss_aplicado = TOPE_IMSS * proporcion;
+      a.excedente = a.bruto_proyecto - a.nomina_directo;
+      a.comision_6pct = a.bruto_proyecto * COMISION;
+      a.total_a_contadores = a.bruto_proyecto * (1 + COMISION);
+    } else if (caso === 'B') {
+      // NOMINA_DIRECTO = bruto fila completo. NO pasa por contadores.
+      a.nomina_directo = a.bruto_proyecto;
+      a.tope_imss_aplicado = 0;
+      a.excedente = 0;
+      a.comision_6pct = 0;
+      a.total_a_contadores = 0;
+    } else {
+      // Caso C — NO_IMSS. Bruto fila entero a contadores, $0 directo.
+      a.nomina_directo = 0;
+      a.tope_imss_aplicado = 0;
+      a.excedente = a.bruto_proyecto;
+      a.comision_6pct = a.bruto_proyecto * COMISION;
+      a.total_a_contadores = a.bruto_proyecto * (1 + COMISION);
+    }
 
     filasNominaDirecto.push({
       empleado_id: a.empleado_id,
       empleado_nombre: emp.nombre,
       empleado_tipo: tipo,
+      caso_pago: caso,
       proyecto: a.proyecto,
-      monto: round2(ndProyecto)
+      monto: round2(a.nomina_directo)
     });
   });
 
-  // 7. Construir resultados detallados (incluye id_captura, dias_f, dias_b, excedente)
+  // 7. Construir resultados detallados (incluye id_captura, dias_f, dias_b, excedente, caso_pago)
   const resultados = Object.keys(agregado).map(function (k) {
     const a = agregado[k];
     const emp = empById[a.empleado_id];
@@ -2030,6 +2179,7 @@ function calcularNomina(quincenaId) {
       empleado_id: a.empleado_id,
       empleado_nombre: emp ? emp.nombre : '(empleado #' + a.empleado_id + ')',
       empleado_tipo: emp ? emp.tipo : '',
+      caso_pago: a.caso_pago || '',
       proyecto: a.proyecto,
       dias_t: a.dias_t,
       dias_d: a.dias_d,
@@ -2043,7 +2193,7 @@ function calcularNomina(quincenaId) {
       bruto_proyecto: round2(a.bruto_proyecto),
       tope_imss_aplicado: round2(a.tope_imss_aplicado),
       nomina_directo: round2(a.nomina_directo),
-      excedente: round2(a.bruto_proyecto - a.nomina_directo),
+      excedente: round2(a.excedente),
       comision_6pct: round2(a.comision_6pct),
       total_a_contadores: round2(a.total_a_contadores)
     };
@@ -2084,17 +2234,24 @@ function calcularNomina(quincenaId) {
   agregadosProyecto.sort(function (a, b) { return String(a.proyecto).localeCompare(String(b.proyecto)); });
 
   // 9. Totales globales
+  //   - bruto_total: suma de TODOS los brutos (incluye casos A, B, C)
+  //   - comision_total / total_a_contadores: suma sobre filas
+  //     (caso B aporta $0 porque ya quedó así en la fila)
+  //   - reintegro_total: suma de tope_imss_aplicado (caso B y C aportan $0)
   let brutoTotal = 0, ndTotal = 0, topeImssTotal = 0;
+  let comisionTotal = 0, totalContadoresTotal = 0;
   resultados.forEach(function (r) {
     brutoTotal += r.bruto_proyecto;
     ndTotal += r.nomina_directo;
     topeImssTotal += r.tope_imss_aplicado;
+    comisionTotal += r.comision_6pct;
+    totalContadoresTotal += r.total_a_contadores;
   });
 
   const totales = {
     bruto_total: round2(brutoTotal),
-    comision_6pct: round2(brutoTotal * COMISION),
-    total_a_contadores: round2(brutoTotal * (1 + COMISION)),
+    comision_6pct: round2(comisionTotal),
+    total_a_contadores: round2(totalContadoresTotal),
     nomina_directo_total: round2(ndTotal),
     reintegro_total: round2(topeImssTotal),
     reintegro_proyecto: PROYECTO_REINTEGRO,
@@ -2368,7 +2525,6 @@ function handleGuardarCalculoNomina(data) {
     const guardadoPor = userName(data);
 
     // Construir filas para NOMINA_RESULTADOS (23 columnas)
-    // ['id_resultado','id_quincena','id_captura','id_empleado','empleado_nombre','proyecto','dias_t','dias_d','dias_f','dias_b','dias_pagables','tarifa_diaria','bruto_base','extras','viaticos','bruto_total','tope_imss_aplicable','nomina_directo','excedente','comision','total_neto','timestamp_calculo','guardado_por']
     const proximoIdR = nextId(shR, 0);
     const filasR = calc.resultados.map(function (r, idx) {
       return [
@@ -2399,7 +2555,6 @@ function handleGuardarCalculoNomina(data) {
     });
 
     // Construir filas para NOMINA_AGREGADOS (12 columnas)
-    // ['id_quincena','proyecto','total_empleados','total_dias_t','total_dias_d','total_bruto','total_nomina_directo','total_excedente','total_comision','monto_nomina_transaccion','timestamp_calculo','guardado_por']
     const filasA = calc.agregados_proyecto.map(function (a) {
       const totalExcedente = round2(a.bruto_total - a.nomina_directo_total);
       return [
@@ -2706,4 +2861,40 @@ function _borrarQuincena_2026_05_14() {
     const rows = sh.getDataRange().getValues();
     Logger.log(nombre + ': ' + Math.max(0, rows.length - 1) + ' filas de datos');
   });
+}
+
+/**
+ * v3.8.2+ — Función ad-hoc para invalidar el snapshot de una quincena
+ * desde el editor de Apps Script.
+ *
+ * Razón: el botón "Invalidar" no está cableado en el frontend del
+ * panel-aprob-calc. Esta función es el escape hatch cuando se necesita
+ * invalidar manualmente.
+ *
+ * USO:
+ *   1. Modifica la constante quincenaId si no es 2026-05-07
+ *   2. Selecciona la función en el dropdown del editor
+ *   3. Click Run (▶)
+ *   4. View → Executions para confirmar resultado
+ *
+ * NO valida permisos ni estado PAGADA porque se ejecuta directamente
+ * desde el editor por el dueño del script.
+ */
+function _invalidarSnapshotAdHoc() {
+  const quincenaId = '2026-05-07';
+  Logger.log('Invalidando snapshot de quincena ' + quincenaId + '...');
+
+  const filasBorradas = withLock(function () {
+    return _invalidarSnapshotInterno(quincenaId);
+  });
+
+  Logger.log('Filas borradas:');
+  Logger.log('  NOMINA_RESULTADOS: ' + filasBorradas.resultados);
+  Logger.log('  NOMINA_AGREGADOS:  ' + filasBorradas.agregados);
+  Logger.log('');
+  if (filasBorradas.resultados > 0 || filasBorradas.agregados > 0) {
+    Logger.log('OK — invalidación exitosa.');
+  } else {
+    Logger.log('No había snapshot para esta quincena (ya estaba limpio).');
+  }
 }
