@@ -1,6 +1,29 @@
 /**
- * CAMI-Nomina v3.8.3
+ * CAMI-Nomina v3.9.0
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.9.0 (22-may-2026): Selector de quincenas y reabrir bulk en panel Aprobación.
+ *
+ *   Backend:
+ *     - handleListarQuincenas: campo nuevo `estado_calculo`
+ *       ('calculada' | 'sin-snapshot') por quincena. Multi-app gate en el
+ *       handler (nomina-supervisor O nomina-aprobar O nomina-finanzas).
+ *     - handleReabrirQuincenaCompleta: endpoint nuevo. Reabre en bulk todas
+ *       las capturas APROBADA/CERRADA de una quincena (obra + admin),
+ *       invalidando el snapshot al final. Permiso nomina-aprobar.
+ *       Log resumen con desglose obra/admin.
+ *     - Router doPost + appKeyForAction: cableado de reabrirQuincenaCompleta
+ *       (gate central nomina-aprobar).
+ *
+ *   Frontend (sigue en este mismo sprint):
+ *     - Selector de últimas 4 quincenas en panel Aprobación.
+ *     - Botón "Reabrir toda la quincena" cuando hay snapshot calculado.
+ *     - Vista solo-lectura del snapshot guardado.
+ *     - Bump VERSION_FRONTEND.
+ *
+ *   Decisión técnica: Opción Y en pieza 2 — duplicación controlada de la
+ *   lógica de reapertura, sin tocar handleReabrirCaptura ni
+ *   handleReabrirCapturaAdmin en producción. Refactor pendiente.
  *
  * v3.8.3 (20-may-2026): Modelo de pago COMPLETO — 3 casos (A/B/C).
  *
@@ -126,7 +149,7 @@
  *   - _testQuincenaParaFecha() — Test aislado del cálculo de quincena (v3.8)
  */
 
-const VERSION = '3.8.3';
+const VERSION = '3.9.0';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -256,6 +279,7 @@ function doPost(e) {
       case 'aprobarCaptura':            return handleAprobarCaptura(data);
       case 'rechazarCaptura':           return handleRechazarCaptura(data);
       case 'reabrirCaptura':            return handleReabrirCaptura(data);
+      case 'reabrirQuincenaCompleta':   return handleReabrirQuincenaCompleta(data);
       case 'detectarConflictos':        return handleDetectarConflictos(data);
       case 'calcularNominaPreview':     return handleCalcularNominaPreview(data);
       case 'invalidarCalculoNomina':    return handleInvalidarCalculoNomina(data);
@@ -281,7 +305,8 @@ function appKeyForAction(action) {
                'agregarEmpleadoCap','quitarEmpleadoCap','marcarDia','guardarExtra','eliminarExtra',
                'guardarViatico','eliminarViatico','enviarCaptura','volverBorrador','listarEmpleadosActivos','capturaAnterior'];
   const aprob = ['listarCapturasParaAprobar','obtenerCapturaParaAprobar','aprobarCaptura',
-               'rechazarCaptura','reabrirCaptura','detectarConflictos','calcularNominaPreview'];
+               'rechazarCaptura','reabrirCaptura','reabrirQuincenaCompleta',
+               'detectarConflictos','calcularNominaPreview'];
   const fin = ['obtenerCapturaAdmin','cerrarCapturaAdmin'];
   // reabrirCapturaAdmin: validamos en el handler (nomina-finanzas O nomina-aprobar)
   // invalidarCalculoNomina, obtenerCalculoNomina, guardarCalculoNomina:
