@@ -2301,6 +2301,19 @@ function renderAprobHeaderBoton() {
   const btn  = document.getElementById('aprob-btn-calcular');
   if (!fila || !btn) return;
   fila.style.display = 'flex';
+
+  // v3.9.0: si ya hay snapshot, el botón lleva a la vista solo-lectura
+  // y siempre va habilitado (no depende de capturas pendientes).
+  if (aprobCalculoSnapshot) {
+    btn.textContent = 'Ver detalle del cálculo';
+    btn.disabled = false;
+    btn.removeAttribute('title');
+    btn.classList.remove('btn-disabled-tooltip');
+    return;
+  }
+
+  // Reset por si veníamos de mostrar "Ver detalle" en otra quincena con snapshot
+  btn.textContent = 'Calcular nómina';
   const estado = puedeCalcularQuincena();
   if (estado.enabled) {
     btn.disabled = false;
@@ -2691,10 +2704,11 @@ function renderAprobCalcVista() {
   const pillHtml = (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo)
     ? '<span class="snap-badge calculada">✓ Calculada · ' + escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>'
     : '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  const titulo = aprobCalculoSnapshot ? '🔒 Detalle del cálculo guardado' : '🧮 Calcular nómina';
   hdr.innerHTML = `
     <div class="cap-toolbar-row">
       <div>
-        <div class="cap-proj">🧮 Calcular nómina</div>
+        <div class="cap-proj">${titulo}</div>
         <div class="cap-quin">Quincena ${escapeHtml(aprobQuincena.id)} · ${escapeHtml(aprobQuincena.fecha_inicio || '')} → ${escapeHtml(aprobQuincena.fecha_fin || '')}</div>
       </div>
       ${pillHtml}
