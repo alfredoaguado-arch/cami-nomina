@@ -374,7 +374,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div id="panel-aprob" class="container" style="display:none">
   <div class="cap-toolbar">
     <div class="cap-toolbar-row">
-      <span class="cap-info">Quincena: <b id="aprob-quin-id">—</b></span>
+      <span class="cap-info" id="aprob-quincena-info">Quincena: <b>—</b></span>
       <span id="aprob-badge-snapshot"></span>
       <button class="btn btn-secondary btn-sm" onclick="initAprob()">↻ Recargar</button>
     </div>
@@ -383,6 +383,9 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
     </div>
     <div class="cap-toolbar-row" id="aprob-fila-boton-calcular" style="display:none">
       <button id="aprob-btn-calcular" class="btn btn-primary btn-block" onclick="irACalcular()">Calcular nómina</button>
+    </div>
+    <div class="cap-toolbar-row" id="aprob-fila-boton-reabrir-quincena" style="display:none">
+      <button id="aprob-btn-reabrir-quincena" class="btn btn-danger btn-block" onclick="abrirReabrirQuincena()">Reabrir toda la quincena</button>
     </div>
   </div>
 
@@ -726,6 +729,35 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
   </div>
 </div>
 
+<!-- ═══ MODAL: reabrir quincena completa (v3.9.0) ═══ -->
+<div class="modal-bg" id="modal-reabrir-quincena">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Reabrir toda la quincena</div>
+      <button class="modal-close" onclick="cerrarReabrirQuincena()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-help" style="margin-bottom:10px;">
+        Se reabrirán todas las capturas aprobadas y cerradas de la quincena
+        <b id="reab-quin-id-display">—</b> (capturas de obra + captura administrativa de finanzas).
+        Vuelven a estado editable. El cálculo de nómina guardado se invalida.
+        Esta acción queda registrada en el log.
+      </div>
+      <div class="field-help" style="margin-bottom:10px;color:var(--err);">
+        ⚠️ Acción de alto impacto. Verifica que es la quincena correcta.
+      </div>
+      <div class="field">
+        <label class="field-label">Motivo (opcional)</label>
+        <input class="field-input" id="reab-quin-motivo" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="cerrarReabrirQuincena()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-reabrir-quincena" onclick="confirmarReabrirQuincena()">Reabrir quincena</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ ACTIONSHEET: selección de marca para un día ═══ -->
 <div class="actionsheet-bg" id="actionsheet-marca" onclick="cerrarMenuDiaSiFuera(event)">
   <div class="actionsheet" onclick="event.stopPropagation()">
@@ -800,6 +832,8 @@ let aprobCapturas = [];
 let aprobConflictos = [];
 let aprobCapturaActual = null;
 let aprobDatosCaptura = null;
+// v3.9.0: selector de quincenas en panel Aprobación
+let aprobQuincenasDisponibles = [];   // últimas N quincenas con estado_calculo
 
 // Administrativa (Fase 3c)
 let adminDatosCaptura = null;
@@ -807,7 +841,7 @@ let quincenasCapturablesAdmin = [];  // v3.3: lista para Mariana
 let adminQuincenaSeleccionada = null; // v3.3
 
 // ═══ FASE 3b FRONTEND: estado del cálculo de nómina ═══
-const VERSION_FRONTEND = '3.6';
+const VERSION_FRONTEND = '3.9.0';
 let aprobCalculoSnapshot = null;  // shape canónico (source='snapshot') o null si no hay
 let aprobCalculoPreview = null;   // shape canónico (source='preview') o null
 let aprobCalculoLoading = false;  // anti-doble-click en botones Recalcular/Guardar
@@ -2267,6 +2301,19 @@ function renderAprobHeaderBoton() {
   const btn  = document.getElementById('aprob-btn-calcular');
   if (!fila || !btn) return;
   fila.style.display = 'flex';
+
+  // v3.9.0: si ya hay snapshot, el botón lleva a la vista solo-lectura
+  // y siempre va habilitado (no depende de capturas pendientes).
+  if (aprobCalculoSnapshot) {
+    btn.textContent = 'Ver detalle del cálculo';
+    btn.disabled = false;
+    btn.removeAttribute('title');
+    btn.classList.remove('btn-disabled-tooltip');
+    return;
+  }
+
+  // Reset por si veníamos de mostrar "Ver detalle" en otra quincena con snapshot
+  btn.textContent = 'Calcular nómina';
   const estado = puedeCalcularQuincena();
   if (estado.enabled) {
     btn.disabled = false;
@@ -2279,30 +2326,56 @@ function renderAprobHeaderBoton() {
   }
 }
 
+function renderAprobBotonReabrirQuincena() {
+  const fila = document.getElementById('aprob-fila-boton-reabrir-quincena');
+  if (!fila) return;
+  // Solo visible si hay snapshot calculado (caso de uso: corregir tras calcular)
+  fila.style.display = aprobCalculoSnapshot ? 'flex' : 'none';
+}
+
 async function initAprob() {
+  try {
+    const ql = await callBackend('listarQuincenas', { limit: 4 });
+    aprobQuincenasDisponibles = ql.quincenas || [];
+
+    const defaultId = aprobQuincenasDisponibles[0]
+      ? aprobQuincenasDisponibles[0].id
+      : null;
+
+    await loadAprobQuincena(defaultId);
+  } catch(err) {
+    const lista = document.getElementById('aprob-lista');
+    lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+async function loadAprobQuincena(quincenaId) {
   const lista = document.getElementById('aprob-lista');
   lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando capturas...</div>';
   document.getElementById('aprob-count').textContent = 'Cargando...';
   document.getElementById('aprob-conflictos').innerHTML = '';
 
   try {
-    const r = await callBackend('listarCapturasParaAprobar', {});
+    const payload = quincenaId ? { quincena_id: quincenaId } : {};
+    const r = await callBackend('listarCapturasParaAprobar', payload);
     aprobQuincena = r.quincena;
     aprobCapturas = r.capturas || [];
 
-    const quincenaId = aprobQuincena ? aprobQuincena.id : null;
+    const qId = aprobQuincena ? aprobQuincena.id : null;
 
     const [c, s] = await Promise.all([
-      callBackend('detectarConflictos', {}),
-      quincenaId
-        ? callBackend('obtenerCalculoNomina', { quincena_id: quincenaId })
+      callBackend('detectarConflictos', qId ? { quincena_id: qId } : {}),
+      qId
+        ? callBackend('obtenerCalculoNomina', { quincena_id: qId })
         : Promise.resolve({ ok: true, calculado: false })
     ]);
     aprobConflictos = c.conflictos || [];
     aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
 
-    document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
-    if (aprobQuincena.fecha_inicio) {
+    renderAprobQuincenaInfo();
+
+    if (aprobQuincena && aprobQuincena.fecha_inicio) {
       document.getElementById('aprob-quin-fechas').textContent =
         `Del ${aprobQuincena.fecha_inicio} al ${aprobQuincena.fecha_fin} · Pago: ${aprobQuincena.fecha_pago}`;
     } else {
@@ -2319,10 +2392,42 @@ async function initAprob() {
     renderAprobLista();
     renderAprobHeaderBadge(aprobCalculoSnapshot);
     renderAprobHeaderBoton();
+    renderAprobBotonReabrirQuincena();
   } catch(err) {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
     toast(err.message, 'error');
   }
+}
+
+async function cambiarQuincenaAprob(quincenaId) {
+  if (!quincenaId) return;
+  await loadAprobQuincena(quincenaId);
+}
+
+function renderAprobQuincenaInfo() {
+  const cont = document.getElementById('aprob-quincena-info');
+  if (!cont) return;
+  const currentId = aprobQuincena ? aprobQuincena.id : null;
+  const lista = aprobQuincenasDisponibles || [];
+
+  if (lista.length === 0) {
+    cont.innerHTML = `Quincena: <b>${currentId || '—'}</b>`;
+    return;
+  }
+
+  if (lista.length === 1) {
+    const q = lista[0];
+    const tag = q.estado_calculo === 'calculada' ? ' · calculada' : '';
+    cont.innerHTML = `Quincena: <b>${q.id}</b>${tag}`;
+    return;
+  }
+
+  const options = lista.map(q => {
+    const selAttr = q.id === currentId ? 'selected' : '';
+    const calcTag = q.estado_calculo === 'calculada' ? ' · calculada' : '';
+    return `<option value="${q.id}" ${selAttr}>${q.fecha_inicio} → ${q.fecha_fin}${calcTag}</option>`;
+  }).join('');
+  cont.innerHTML = `<select class="quincena-select" onchange="cambiarQuincenaAprob(this.value)">${options}</select>`;
 }
 
 function renderConflictosBanner() {
@@ -2516,6 +2621,48 @@ async function confirmarReabrir() {
   finally { btn.disabled = false; btn.textContent = 'Reabrir'; }
 }
 
+function abrirReabrirQuincena() {
+  if (!aprobQuincena) { toast('Cargá la quincena primero', 'error'); return; }
+  document.getElementById('reab-quin-id-display').textContent = aprobQuincena.id;
+  document.getElementById('reab-quin-motivo').value = '';
+  document.getElementById('btn-confirmar-reabrir-quincena').disabled = false;
+  document.getElementById('btn-confirmar-reabrir-quincena').textContent = 'Reabrir quincena';
+  document.getElementById('modal-reabrir-quincena').classList.add('show');
+  setTimeout(() => document.getElementById('reab-quin-motivo').focus(), 150);
+}
+
+function cerrarReabrirQuincena() {
+  document.getElementById('modal-reabrir-quincena').classList.remove('show');
+}
+
+async function confirmarReabrirQuincena() {
+  const btn = document.getElementById('btn-confirmar-reabrir-quincena');
+  if (btn.disabled) return;
+  if (!aprobQuincena) { toast('No hay quincena cargada', 'error'); return; }
+  const qid = aprobQuincena.id;  // capturar antes de la recarga
+  const motivo = document.getElementById('reab-quin-motivo').value.trim();
+  btn.disabled = true; btn.textContent = 'Reabriendo…';
+  try {
+    const r = await callBackend('reabrirQuincenaCompleta', { quincena_id: qid, motivo });
+    cerrarReabrirQuincena();
+    const n = r.capturas_reabiertas || 0;
+    if (n === 0) {
+      // No había nada que reabrir — el backend warning explica
+      toast(r.warning || 'No había capturas para reabrir en esta quincena', 'error');
+    } else {
+      toast(`Quincena reabierta — ${n} captura${n === 1 ? '' : 's'}`, 'success');
+      if (r.warning) {
+        setTimeout(() => toast(r.warning, 'error'), 600);
+      }
+    }
+    await loadAprobQuincena(qid);  // preserva la quincena seleccionada
+  } catch(err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Reabrir quincena';
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ FASE 3b: VISTA DE CÁLCULO DE NÓMINA                                    ═══
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2557,10 +2704,11 @@ function renderAprobCalcVista() {
   const pillHtml = (calc && calc.source === 'snapshot' && calc.metadata.timestamp_calculo)
     ? '<span class="snap-badge calculada">✓ Calculada · ' + escapeHtml(formatTimestampLocal(calc.metadata.timestamp_calculo)) + '</span>'
     : '<span class="snap-badge sin-snapshot">Sin snapshot</span>';
+  const titulo = aprobCalculoSnapshot ? '🔒 Detalle del cálculo guardado' : '🧮 Calcular nómina';
   hdr.innerHTML = `
     <div class="cap-toolbar-row">
       <div>
-        <div class="cap-proj">🧮 Calcular nómina</div>
+        <div class="cap-proj">${titulo}</div>
         <div class="cap-quin">Quincena ${escapeHtml(aprobQuincena.id)} · ${escapeHtml(aprobQuincena.fecha_inicio || '')} → ${escapeHtml(aprobQuincena.fecha_fin || '')}</div>
       </div>
       ${pillHtml}

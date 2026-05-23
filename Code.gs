@@ -1,6 +1,29 @@
 /**
- * CAMI-Nomina v3.8.3
+ * CAMI-Nomina v3.9.0
  * Módulo de nómina quincenal — Fases 1, 2, 3a, 3b ✓, 3c.
+ *
+ * v3.9.0 (22-may-2026): Selector de quincenas y reabrir bulk en panel Aprobación.
+ *
+ *   Backend:
+ *     - handleListarQuincenas: campo nuevo `estado_calculo`
+ *       ('calculada' | 'sin-snapshot') por quincena. Multi-app gate en el
+ *       handler (nomina-supervisor O nomina-aprobar O nomina-finanzas).
+ *     - handleReabrirQuincenaCompleta: endpoint nuevo. Reabre en bulk todas
+ *       las capturas APROBADA/CERRADA de una quincena (obra + admin),
+ *       invalidando el snapshot al final. Permiso nomina-aprobar.
+ *       Log resumen con desglose obra/admin.
+ *     - Router doPost + appKeyForAction: cableado de reabrirQuincenaCompleta
+ *       (gate central nomina-aprobar).
+ *
+ *   Frontend (sigue en este mismo sprint):
+ *     - Selector de últimas 4 quincenas en panel Aprobación.
+ *     - Botón "Reabrir toda la quincena" cuando hay snapshot calculado.
+ *     - Vista solo-lectura del snapshot guardado.
+ *     - Bump VERSION_FRONTEND.
+ *
+ *   Decisión técnica: Opción Y en pieza 2 — duplicación controlada de la
+ *   lógica de reapertura, sin tocar handleReabrirCaptura ni
+ *   handleReabrirCapturaAdmin en producción. Refactor pendiente.
  *
  * v3.8.3 (20-may-2026): Modelo de pago COMPLETO — 3 casos (A/B/C).
  *
@@ -126,7 +149,7 @@
  *   - _testQuincenaParaFecha() — Test aislado del cálculo de quincena (v3.8)
  */
 
-const VERSION = '3.8.3';
+const VERSION = '3.9.0';
 const MODULE_NAME = 'nomina';
 
 // Constante de proyecto para captura administrativa
@@ -256,6 +279,7 @@ function doPost(e) {
       case 'aprobarCaptura':            return handleAprobarCaptura(data);
       case 'rechazarCaptura':           return handleRechazarCaptura(data);
       case 'reabrirCaptura':            return handleReabrirCaptura(data);
+      case 'reabrirQuincenaCompleta':   return handleReabrirQuincenaCompleta(data);
       case 'detectarConflictos':        return handleDetectarConflictos(data);
       case 'calcularNominaPreview':     return handleCalcularNominaPreview(data);
       case 'invalidarCalculoNomina':    return handleInvalidarCalculoNomina(data);
@@ -277,15 +301,17 @@ function doPost(e) {
 
 function appKeyForAction(action) {
   const rh = ['listarEmpleados','obtenerEmpleado','crearEmpleado','actualizarEmpleado','bajaEmpleado','reactivarEmpleado'];
-  const sup = ['misProyectos','quincenaActual','quincenasCapturables','listarQuincenas','misCapturas','crearCaptura','obtenerCaptura',
+  const sup = ['misProyectos','quincenaActual','quincenasCapturables','misCapturas','crearCaptura','obtenerCaptura',
                'agregarEmpleadoCap','quitarEmpleadoCap','marcarDia','guardarExtra','eliminarExtra',
                'guardarViatico','eliminarViatico','enviarCaptura','volverBorrador','listarEmpleadosActivos','capturaAnterior'];
   const aprob = ['listarCapturasParaAprobar','obtenerCapturaParaAprobar','aprobarCaptura',
-               'rechazarCaptura','reabrirCaptura','detectarConflictos','calcularNominaPreview'];
+               'rechazarCaptura','reabrirCaptura','reabrirQuincenaCompleta',
+               'detectarConflictos','calcularNominaPreview'];
   const fin = ['obtenerCapturaAdmin','cerrarCapturaAdmin'];
   // reabrirCapturaAdmin: validamos en el handler (nomina-finanzas O nomina-aprobar)
   // invalidarCalculoNomina, obtenerCalculoNomina, guardarCalculoNomina:
   //   validamos en el handler (nomina-finanzas O nomina-aprobar, mismo patrón)
+  // listarQuincenas: validamos en el handler (nomina-supervisor O nomina-aprobar O nomina-finanzas)
   if (rh.indexOf(action) >= 0)    return 'nomina-rh';
   if (sup.indexOf(action) >= 0)   return 'nomina-supervisor';
   if (aprob.indexOf(action) >= 0) return 'nomina-aprobar';
@@ -905,17 +931,43 @@ function handleQuincenasCapturables(data) {
 }
 
 function handleListarQuincenas(data) {
+  // Multi-app: supervisor (uso original Fase 2), aprobar (selector del panel Aprobación, v3.9),
+  // finanzas (vista solo-lectura del snapshot, v3.9). appKeyForAction devuelve null para
+  // esta action; el gate vive aquí, mismo patrón que obtenerCalculoNomina (Bloque 4).
+  if (!userTieneApp(data, 'nomina-supervisor') &&
+      !userTieneApp(data, 'nomina-aprobar') &&
+      !userTieneApp(data, 'nomina-finanzas')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-supervisor, nomina-aprobar o nomina-finanzas)' });
+  }
+
+  asegurarHojasNomina();
+
   const sh = getSheet(HOJAS.QUINCENAS);
   let lista = rowsToObjects(sh.getDataRange().getValues());
+
+  // Set de id_quincena con snapshot guardado — leemos NOMINA_RESULTADOS UNA sola vez.
+  // Columna 1 = id_quincena (ver HEADERS.NOMINA_RESULTADOS).
+  const conSnapshot = {};
+  const shR = getSheet(HOJAS.NOMINA_RESULTADOS);
+  if (shR && shR.getLastRow() > 1) {
+    const rows = shR.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      const qid = normFecha(rows[i][1]);
+      if (qid) conSnapshot[qid] = true;
+    }
+  }
+
   lista = lista.map(function (q) {
+    const qid = normFecha(q.id);
     return {
-      id:               normFecha(q.id),
+      id:               qid,
       fecha_inicio:     normFecha(q.fecha_inicio),
       fecha_fin:        normFecha(q.fecha_fin),
       fecha_pago:       normFecha(q.fecha_pago),
       estado:           q.estado,
       aprobada_por:     q.aprobada_por,
-      fecha_aprobacion: q.fecha_aprobacion
+      fecha_aprobacion: q.fecha_aprobacion,
+      estado_calculo:   conSnapshot[qid] ? 'calculada' : 'sin-snapshot'
     };
   });
   lista.sort(function (a, b) { return String(b.id).localeCompare(String(a.id)); });
@@ -1929,6 +1981,133 @@ function handleReabrirCapturaAdmin(data) {
     }
   }
   return jsonResp({ ok: false, error: 'captura no encontrada' });
+}
+
+/**
+ * Reabre TODAS las capturas APROBADAS (normales) y CERRADAS (admin) de una quincena,
+ * para corregir errores antes del pago.
+ *
+ * Política:
+ *   - Permiso: solo nomina-aprobar (lo dispara el admin, no supervisores).
+ *   - Bloqueo: quincena PAGADA es inamovible.
+ *   - Snapshot: invalidación única al final (best-effort, mismo patrón que single-reabrir).
+ *   - Log: una fila REABRIR/REABRIR_ADMIN por captura + una fila resumen
+ *     REABRIR_QUINCENA_COMPLETA (captura_id vacío, comentario con desglose
+ *     obra/admin y motivo si se proporcionó).
+ *   - No atomicidad: si crashea a mitad del loop quedan capturas mixtas (igual que
+ *     los handlers single a su escala). El warning de snapshot pide invalidación manual.
+ *   - Sin refactor: duplica la lógica esencial de reabrir-captura para no tocar
+ *     handlers en producción (decisión "Opción Y", Pieza 2). Refactor pendiente.
+ */
+function handleReabrirQuincenaCompleta(data) {
+  // Permiso: solo el admin (nomina-aprobar). Supervisores NO disparan bulk.
+  if (!userTieneApp(data, 'nomina-aprobar')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-aprobar)' });
+  }
+
+  const quincenaId = normFecha(data.quincena_id);
+  if (!quincenaId) return jsonResp({ ok: false, error: 'falta quincena_id' });
+
+  const motivo = String(data.motivo || '').trim();
+  const usuario = userName(data);
+
+  // Bloqueo: quincena PAGADA (mismo patrón que handleReabrirCaptura)
+  const shQ = getSheet(HOJAS.QUINCENAS);
+  if (shQ) {
+    const qRows = shQ.getDataRange().getValues();
+    const headersQ = qRows[0];
+    const colEstadoQ = headersQ.indexOf('estado');
+    for (let j = 1; j < qRows.length; j++) {
+      if (normFecha(qRows[j][0]) === quincenaId) {
+        const estadoQ = colEstadoQ >= 0 ? qRows[j][colEstadoQ] : '';
+        if (estadoQ === 'PAGADA') {
+          return jsonResp({
+            ok: false,
+            error: 'no se puede reabrir: la quincena ' + quincenaId + ' ya fue PAGADA'
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  // Identificar capturas reabribles (APROBADA o CERRADA en esta quincena)
+  const shCap = getSheet(HOJAS.CAPTURAS);
+  const rows = shCap.getDataRange().getValues();
+  const headers = rows[0];
+  const colEstado    = headers.indexOf('estado');
+  const colProyecto  = headers.indexOf('proyecto');
+  const colAprobador = headers.indexOf('aprobada_por');
+  const colFecha     = headers.indexOf('fecha_aprobacion');
+  const colQuincena  = headers.indexOf('quincena_id');
+
+  const aReabrir = []; // { rowIndex (1-based para getRange), capturaId, accionLog }
+  for (let i = 1; i < rows.length; i++) {
+    if (normFecha(rows[i][colQuincena]) !== quincenaId) continue;
+    const estado = rows[i][colEstado];
+    if (estado !== 'APROBADA' && estado !== 'CERRADA') continue;
+    const esAdmin = (rows[i][colProyecto] === PROYECTO_ADMIN);
+    aReabrir.push({
+      rowIndex:  i + 1,
+      capturaId: rows[i][0],
+      accionLog: esAdmin ? 'REABRIR_ADMIN' : 'REABRIR'
+    });
+  }
+
+  if (aReabrir.length === 0) {
+    return jsonResp({
+      ok: true,
+      quincena_id: quincenaId,
+      capturas_reabiertas: 0,
+      snapshot_invalidado: false,
+      filas_borradas: { resultados: 0, agregados: 0 },
+      warning: 'no hay capturas APROBADAS ni CERRADAS para reabrir en la quincena ' + quincenaId
+    });
+  }
+
+  // Reabrir cada captura + log individual + contar por tipo para el log bulk
+  // (estos setValue × 3 + logAprobacion son la "duplicación" Opción Y)
+  let countObra = 0, countAdmin = 0;
+  aReabrir.forEach(function (c) {
+    shCap.getRange(c.rowIndex, colEstado + 1).setValue('BORRADOR');
+    if (colAprobador >= 0) shCap.getRange(c.rowIndex, colAprobador + 1).setValue('');
+    if (colFecha >= 0)     shCap.getRange(c.rowIndex, colFecha + 1).setValue('');
+    logAprobacion(c.capturaId, c.accionLog, usuario, motivo);
+    if (c.accionLog === 'REABRIR_ADMIN') countAdmin++;
+    else countObra++;
+  });
+
+  // Log bulk: 1 fila resumen, captura_id vacío, desglose obra/admin en comentario
+  logAprobacion('', 'REABRIR_QUINCENA_COMPLETA', usuario,
+    'quincena ' + quincenaId + ' — ' + aReabrir.length + ' captura(s) reabierta(s)' +
+    ' (obra: ' + countObra + ', admin: ' + countAdmin + ')' +
+    (motivo ? '. Motivo: ' + motivo : ''));
+
+  // Invalidar snapshot UNA sola vez al final (best-effort, mismo patrón que single-reabrir)
+  let snapshotInvalidado = false;
+  let filasBorradas = { resultados: 0, agregados: 0 };
+  let warning = null;
+  try {
+    asegurarHojasNomina();
+    filasBorradas = withLock(function () {
+      return _invalidarSnapshotInterno(quincenaId);
+    });
+    snapshotInvalidado = (filasBorradas.resultados + filasBorradas.agregados) > 0;
+  } catch (err) {
+    warning = 'No se pudo invalidar snapshot automáticamente: ' + err.toString() +
+              '. Invalida manualmente la quincena ' + quincenaId + '.';
+    Logger.log('handleReabrirQuincenaCompleta: ' + warning);
+  }
+
+  const resp = {
+    ok: true,
+    quincena_id: quincenaId,
+    capturas_reabiertas: aReabrir.length,
+    snapshot_invalidado: snapshotInvalidado,
+    filas_borradas: filasBorradas
+  };
+  if (warning) resp.warning = warning;
+  return jsonResp(resp);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
