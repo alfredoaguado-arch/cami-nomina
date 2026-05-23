@@ -1958,6 +1958,133 @@ function handleReabrirCapturaAdmin(data) {
   return jsonResp({ ok: false, error: 'captura no encontrada' });
 }
 
+/**
+ * Reabre TODAS las capturas APROBADAS (normales) y CERRADAS (admin) de una quincena,
+ * para corregir errores antes del pago.
+ *
+ * Política:
+ *   - Permiso: solo nomina-aprobar (lo dispara el admin, no supervisores).
+ *   - Bloqueo: quincena PAGADA es inamovible.
+ *   - Snapshot: invalidación única al final (best-effort, mismo patrón que single-reabrir).
+ *   - Log: una fila REABRIR/REABRIR_ADMIN por captura + una fila resumen
+ *     REABRIR_QUINCENA_COMPLETA (captura_id vacío, comentario con desglose
+ *     obra/admin y motivo si se proporcionó).
+ *   - No atomicidad: si crashea a mitad del loop quedan capturas mixtas (igual que
+ *     los handlers single a su escala). El warning de snapshot pide invalidación manual.
+ *   - Sin refactor: duplica la lógica esencial de reabrir-captura para no tocar
+ *     handlers en producción (decisión "Opción Y", Pieza 2). Refactor pendiente.
+ */
+function handleReabrirQuincenaCompleta(data) {
+  // Permiso: solo el admin (nomina-aprobar). Supervisores NO disparan bulk.
+  if (!userTieneApp(data, 'nomina-aprobar')) {
+    return jsonResp({ ok: false, error: 'sin permiso (requiere nomina-aprobar)' });
+  }
+
+  const quincenaId = normFecha(data.quincena_id);
+  if (!quincenaId) return jsonResp({ ok: false, error: 'falta quincena_id' });
+
+  const motivo = String(data.motivo || '').trim();
+  const usuario = userName(data);
+
+  // Bloqueo: quincena PAGADA (mismo patrón que handleReabrirCaptura)
+  const shQ = getSheet(HOJAS.QUINCENAS);
+  if (shQ) {
+    const qRows = shQ.getDataRange().getValues();
+    const headersQ = qRows[0];
+    const colEstadoQ = headersQ.indexOf('estado');
+    for (let j = 1; j < qRows.length; j++) {
+      if (normFecha(qRows[j][0]) === quincenaId) {
+        const estadoQ = colEstadoQ >= 0 ? qRows[j][colEstadoQ] : '';
+        if (estadoQ === 'PAGADA') {
+          return jsonResp({
+            ok: false,
+            error: 'no se puede reabrir: la quincena ' + quincenaId + ' ya fue PAGADA'
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  // Identificar capturas reabribles (APROBADA o CERRADA en esta quincena)
+  const shCap = getSheet(HOJAS.CAPTURAS);
+  const rows = shCap.getDataRange().getValues();
+  const headers = rows[0];
+  const colEstado    = headers.indexOf('estado');
+  const colProyecto  = headers.indexOf('proyecto');
+  const colAprobador = headers.indexOf('aprobada_por');
+  const colFecha     = headers.indexOf('fecha_aprobacion');
+  const colQuincena  = headers.indexOf('quincena_id');
+
+  const aReabrir = []; // { rowIndex (1-based para getRange), capturaId, accionLog }
+  for (let i = 1; i < rows.length; i++) {
+    if (normFecha(rows[i][colQuincena]) !== quincenaId) continue;
+    const estado = rows[i][colEstado];
+    if (estado !== 'APROBADA' && estado !== 'CERRADA') continue;
+    const esAdmin = (rows[i][colProyecto] === PROYECTO_ADMIN);
+    aReabrir.push({
+      rowIndex:  i + 1,
+      capturaId: rows[i][0],
+      accionLog: esAdmin ? 'REABRIR_ADMIN' : 'REABRIR'
+    });
+  }
+
+  if (aReabrir.length === 0) {
+    return jsonResp({
+      ok: true,
+      quincena_id: quincenaId,
+      capturas_reabiertas: 0,
+      snapshot_invalidado: false,
+      filas_borradas: { resultados: 0, agregados: 0 },
+      warning: 'no hay capturas APROBADAS ni CERRADAS para reabrir en la quincena ' + quincenaId
+    });
+  }
+
+  // Reabrir cada captura + log individual + contar por tipo para el log bulk
+  // (estos setValue × 3 + logAprobacion son la "duplicación" Opción Y)
+  let countObra = 0, countAdmin = 0;
+  aReabrir.forEach(function (c) {
+    shCap.getRange(c.rowIndex, colEstado + 1).setValue('BORRADOR');
+    if (colAprobador >= 0) shCap.getRange(c.rowIndex, colAprobador + 1).setValue('');
+    if (colFecha >= 0)     shCap.getRange(c.rowIndex, colFecha + 1).setValue('');
+    logAprobacion(c.capturaId, c.accionLog, usuario, motivo);
+    if (c.accionLog === 'REABRIR_ADMIN') countAdmin++;
+    else countObra++;
+  });
+
+  // Log bulk: 1 fila resumen, captura_id vacío, desglose obra/admin en comentario
+  logAprobacion('', 'REABRIR_QUINCENA_COMPLETA', usuario,
+    'quincena ' + quincenaId + ' — ' + aReabrir.length + ' captura(s) reabierta(s)' +
+    ' (obra: ' + countObra + ', admin: ' + countAdmin + ')' +
+    (motivo ? '. Motivo: ' + motivo : ''));
+
+  // Invalidar snapshot UNA sola vez al final (best-effort, mismo patrón que single-reabrir)
+  let snapshotInvalidado = false;
+  let filasBorradas = { resultados: 0, agregados: 0 };
+  let warning = null;
+  try {
+    asegurarHojasNomina();
+    filasBorradas = withLock(function () {
+      return _invalidarSnapshotInterno(quincenaId);
+    });
+    snapshotInvalidado = (filasBorradas.resultados + filasBorradas.agregados) > 0;
+  } catch (err) {
+    warning = 'No se pudo invalidar snapshot automáticamente: ' + err.toString() +
+              '. Invalida manualmente la quincena ' + quincenaId + '.';
+    Logger.log('handleReabrirQuincenaCompleta: ' + warning);
+  }
+
+  const resp = {
+    ok: true,
+    quincena_id: quincenaId,
+    capturas_reabiertas: aReabrir.length,
+    snapshot_invalidado: snapshotInvalidado,
+    filas_borradas: filasBorradas
+  };
+  if (warning) resp.warning = warning;
+  return jsonResp(resp);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ═══ FASE 3b — Cálculo de nómina                                             ═══
 // ═══════════════════════════════════════════════════════════════════════════════
