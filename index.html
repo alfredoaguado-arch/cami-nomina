@@ -374,7 +374,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 <div id="panel-aprob" class="container" style="display:none">
   <div class="cap-toolbar">
     <div class="cap-toolbar-row">
-      <span class="cap-info">Quincena: <b id="aprob-quin-id">—</b></span>
+      <span class="cap-info" id="aprob-quincena-info">Quincena: <b>—</b></span>
       <span id="aprob-badge-snapshot"></span>
       <button class="btn btn-secondary btn-sm" onclick="initAprob()">↻ Recargar</button>
     </div>
@@ -800,6 +800,8 @@ let aprobCapturas = [];
 let aprobConflictos = [];
 let aprobCapturaActual = null;
 let aprobDatosCaptura = null;
+// v3.9.0: selector de quincenas en panel Aprobación
+let aprobQuincenasDisponibles = [];   // últimas N quincenas con estado_calculo
 
 // Administrativa (Fase 3c)
 let adminDatosCaptura = null;
@@ -2280,29 +2282,48 @@ function renderAprobHeaderBoton() {
 }
 
 async function initAprob() {
+  try {
+    const ql = await callBackend('listarQuincenas', { limit: 4 });
+    aprobQuincenasDisponibles = ql.quincenas || [];
+
+    const defaultId = aprobQuincenasDisponibles[0]
+      ? aprobQuincenasDisponibles[0].id
+      : null;
+
+    await loadAprobQuincena(defaultId);
+  } catch(err) {
+    const lista = document.getElementById('aprob-lista');
+    lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+    toast(err.message, 'error');
+  }
+}
+
+async function loadAprobQuincena(quincenaId) {
   const lista = document.getElementById('aprob-lista');
   lista.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando capturas...</div>';
   document.getElementById('aprob-count').textContent = 'Cargando...';
   document.getElementById('aprob-conflictos').innerHTML = '';
 
   try {
-    const r = await callBackend('listarCapturasParaAprobar', {});
+    const payload = quincenaId ? { quincena_id: quincenaId } : {};
+    const r = await callBackend('listarCapturasParaAprobar', payload);
     aprobQuincena = r.quincena;
     aprobCapturas = r.capturas || [];
 
-    const quincenaId = aprobQuincena ? aprobQuincena.id : null;
+    const qId = aprobQuincena ? aprobQuincena.id : null;
 
     const [c, s] = await Promise.all([
-      callBackend('detectarConflictos', {}),
-      quincenaId
-        ? callBackend('obtenerCalculoNomina', { quincena_id: quincenaId })
+      callBackend('detectarConflictos', qId ? { quincena_id: qId } : {}),
+      qId
+        ? callBackend('obtenerCalculoNomina', { quincena_id: qId })
         : Promise.resolve({ ok: true, calculado: false })
     ]);
     aprobConflictos = c.conflictos || [];
     aprobCalculoSnapshot = s.calculado ? normalizarCalculo(s, 'snapshot') : null;
 
-    document.getElementById('aprob-quin-id').textContent = aprobQuincena.id;
-    if (aprobQuincena.fecha_inicio) {
+    renderAprobQuincenaInfo();
+
+    if (aprobQuincena && aprobQuincena.fecha_inicio) {
       document.getElementById('aprob-quin-fechas').textContent =
         `Del ${aprobQuincena.fecha_inicio} al ${aprobQuincena.fecha_fin} · Pago: ${aprobQuincena.fecha_pago}`;
     } else {
@@ -2323,6 +2344,37 @@ async function initAprob() {
     lista.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
     toast(err.message, 'error');
   }
+}
+
+async function cambiarQuincenaAprob(quincenaId) {
+  if (!quincenaId) return;
+  await loadAprobQuincena(quincenaId);
+}
+
+function renderAprobQuincenaInfo() {
+  const cont = document.getElementById('aprob-quincena-info');
+  if (!cont) return;
+  const currentId = aprobQuincena ? aprobQuincena.id : null;
+  const lista = aprobQuincenasDisponibles || [];
+
+  if (lista.length === 0) {
+    cont.innerHTML = `Quincena: <b>${currentId || '—'}</b>`;
+    return;
+  }
+
+  if (lista.length === 1) {
+    const q = lista[0];
+    const tag = q.estado_calculo === 'calculada' ? ' · calculada' : '';
+    cont.innerHTML = `Quincena: <b>${q.id}</b>${tag}`;
+    return;
+  }
+
+  const options = lista.map(q => {
+    const selAttr = q.id === currentId ? 'selected' : '';
+    const calcTag = q.estado_calculo === 'calculada' ? ' · calculada' : '';
+    return `<option value="${q.id}" ${selAttr}>${q.fecha_inicio} → ${q.fecha_fin}${calcTag}</option>`;
+  }).join('');
+  cont.innerHTML = `<select class="quincena-select" onchange="cambiarQuincenaAprob(this.value)">${options}</select>`;
 }
 
 function renderConflictosBanner() {
