@@ -155,6 +155,8 @@ Como todos los módulos del ecosistema:
 
 **Cache local de tokens:** El backend cachea tokens validados por 10 minutos para reducir round-trips al central.
 
+**⚠️ Scope `script.external_request` (Apps Script):** la validación del token vía HTTP contra el central (paso 3) usa `UrlFetchApp.fetch`. Eso EXIGE el scope `https://www.googleapis.com/auth/script.external_request` autorizado en el proyecto Apps Script, junto con `.../auth/spreadsheets` (declarar AMBOS en `oauthScopes`, nivel RAÍZ del manifiesto, NO dentro de `"webapp"`). Si falta: el gate rechaza POSTs sin token pero NO valida tokens reales — toda escritura da "Sesión inválida o expirada" aunque la sesión sea válida (las lecturas engañan). `appsscript.json` no se versiona en el repo (vive sólo en el editor). cami-nomina ya lo tiene autorizado por eso opera. Incidente real: cami-procesos, 09-jun-2026 (si el popup de consentimiento no aparece al Ejecutar/Deploy, revocar acceso en `myaccount.google.com/permissions` y re-ejecutar).
+
 ## 11. Detalles operativos importantes
 
 **Quincenas con capturas pendientes:**
