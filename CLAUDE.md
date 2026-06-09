@@ -29,7 +29,7 @@ CAMI es una plataforma modular para operación interna (construcción / manufact
 
 `cami-nomina` es el módulo de **nómina quincenal**. Es uno de los módulos más complejos del ecosistema porque maneja flujos múltiples con varios roles, cálculos con tope IMSS y dispersión proporcional.
 
-**Versión actual:** v3.5 (Fase 3b completa, 18-may-2026)
+**Versión actual:** v3.9.0 (sprint selector quincenas + reabrir bulk, 22-may-2026). Modelo de cálculo A/B/C fijado en v3.8.3 (20-may-2026). VERSION (Code.gs) y VERSION_FRONTEND (index.html) deben ir parejos.
 
 ## 3. Roles y app keys
 
@@ -60,13 +60,23 @@ CAMI es una plataforma modular para operación interna (construcción / manufact
 
 ## 5. Regla de cálculo (CRÍTICA — no cambiar sin confirmación)
 
-**Bruto del empleado en la quincena:**
+**Bruto base del empleado:**
 ```
-bruto = (días T + días D) × tarifa_diaria + horas_extras
+bruto = (días T + días D) × tarifa_diaria + horas_extras + viáticos
 ```
+(Detalle completo del modelo en `Code.gs` líneas 28-77.)
 
-**Las horas extras SÍ cuentan al tope IMSS.**
-**Los viáticos NO cuentan al tope IMSS** (se pagan aparte, los dispersan los contadores).
+**Tope IMSS quincenal:** $4,410.56 por empleado IMSS.
+
+**Modelo de pago — 3 casos (fijado v3.8.3, 20-may-2026):**
+
+| Caso | Quién | NOMINA_DIRECTO | Pasa por contadores | Comisión 6% | REINTEGRO |
+|---|---|---|---|---|---|
+| **A** | IMSS con bruto > tope | Tope prorrateado por días T+D entre proyectos | Sí (excedente = bruto − tope) | Sí, sobre bruto del proyecto | Sí, por el tope |
+| **B** | IMSS con bruto ≤ tope | Bruto entero (CAMI paga directo como proveedor) | **No** | **No** | **No** |
+| **C** | NO_IMSS | $0 | Sí (todo el bruto va por contadores) | Sí, sobre bruto del proyecto | No |
+
+**Implicación:** Caso B y C cambian fundamentalmente cómo se construyen las filas de TRANSACCIONES en Fase 3f. Antes de tocar fórmulas, confirmar contra estos 3 casos.
 
 ## 6. Estado actual de las fases
 
@@ -93,6 +103,12 @@ bruto = (días T + días D) × tarifa_diaria + horas_extras
 - `APROBACIONES_LOG` — log de aprobaciones / rechazos / reaperturas
 - `NOMINA_RESULTADOS` — snapshot por empleado×proyecto del cálculo (Fase 3b)
 - `NOMINA_AGREGADOS` — totales por empleado por quincena, sin desglose por proyecto (Fase 3b)
+
+**Columnas de NOMINA_RESULTADOS** (autoritativas en `Code.gs:194`):
+`id_resultado, id_quincena, id_captura, id_empleado, empleado_nombre, proyecto, dias_t, dias_d, dias_f, dias_b, dias_pagables, tarifa_diaria, bruto_base, extras, viaticos, bruto_total, tope_imss_aplicable, nomina_directo, excedente, comision, total_neto, timestamp_calculo, guardado_por`
+
+**Columnas de NOMINA_AGREGADOS** (autoritativas en `Code.gs:195`):
+`id_quincena, proyecto, total_empleados, total_dias_t, total_dias_d, total_bruto, total_nomina_directo, total_excedente, total_comision, monto_nomina_transaccion, timestamp_calculo, guardado_por`
 
 ## 8. Categorías de TRANSACCIONES (cuando se implemente 3f)
 
@@ -209,10 +225,12 @@ Tope IMSS quincenal: $4,410.56 para todos los IMSS.
 
 ## 16. Pendientes inmediatos
 
-> **Fase 3b backend cerrada el 18-may-2026** (v3.5). Endpoints `obtenerCalculoNomina` / `guardarCalculoNomina` / `invalidarCalculoNomina` desplegados; snapshot en NOMINA_RESULTADOS + NOMINA_AGREGADOS operativo.
+> **Sprint v3.9.0 cerrado 22-may-2026.** Panel Aprobación ahora tiene: selector de últimas 4 quincenas (multi-app), badge `estado_calculo` (calculada / sin-snapshot), botón "Reabrir toda la quincena" (endpoint `reabrirQuincenaCompleta`), textos contextuales según snapshot.
+>
+> **Modelo de pago A/B/C fijado en v3.8.3 (20-may-2026)** tras validación operativa.
 
-1. **Fase 3e — Excel + email a contadores** (siguiente)
-2. **Validar quincena 22-may pagada con app** (validación operativa)
+1. **Fase 3e — Excel + email a contadores** (siguiente sprint)
+2. **Fase 3d — PDFs detallado / resumido** (rama en progreso: `feature/3d-pdf-detallado-adapter`, WIP v3.7)
 3. **Performance:** lentitud reportada al cambiar pestañas. Quick win: spinner global más prominente. Optimización profunda: endpoint combinado `initSupervisorData`, cache local en sessionStorage. Esto último post-migración.
 
 ## 17. Migración planeada
