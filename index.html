@@ -5,25 +5,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>CAMI — Nómina</title>
 <link rel="manifest" href="manifest.json"/>
+<link rel="stylesheet" href="https://alfredoaguado-arch.github.io/cami-app2/theme/v1.css"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="CAMI Nómina"/>
-<meta name="theme-color" content="#1A1A18"/>
+<meta name="theme-color" content="#21353E"/>
 <style>
+/* cami-nomina v3.6 — identidad CAMI (navy + naranja + papel + Sora/DM Sans) */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#F5F3EE;--card:#fff;--border:#D3D1C7;--text:#1A1A18;--muted:#888780;--dark:#1A1A18;--light:#EFEFED;--err-bg:#FCEBEB;--err:#A32D2D;--ok-bg:#EAF3DE;--ok:#3B6D11;--warn-bg:#FAEEDA;--warn:#854F0B;--info-bg:#E6F1FB;--info:#0C447C;}
-body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;}
+:root{--bg:var(--cami-paper);--card:#fff;--border:var(--cami-rule);--text:var(--cami-ink);--muted:var(--cami-ink-soft);--dark:var(--cami-navy);--light:var(--cami-paper-2);--err-bg:var(--cami-red-bg);--err:var(--cami-red);--ok-bg:var(--cami-green-bg);--ok:var(--cami-green);--warn-bg:var(--cami-amber-bg);--warn:var(--cami-amber);--info-bg:var(--cami-blue-bg);--info:var(--cami-info);}
+body.cami-themed{min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;}
 
 /* ── TOPBAR ── */
-.topbar{background:#1A1A18;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+.topbar{background:var(--cami-navy-grad);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;overflow:hidden;}
+.topbar::after{content:'';position:absolute;right:0;top:0;bottom:0;width:6px;background:var(--cami-orange);}
 .topbar-left{display:flex;align-items:center;gap:14px;}
-.topbar .logo-text{font-size:20px;letter-spacing:.18em;color:#fff;font-weight:900;}
-.topbar .module-name{font-size:11px;color:#888780;letter-spacing:.12em;text-transform:uppercase;}
-.topbar-right{text-align:right;}
-.topbar-user{font-size:10px;color:#888780;letter-spacing:.06em;text-transform:uppercase;}
-.topbar-role{font-size:12px;font-weight:700;color:#fff;margin-top:2px;}
-.back-btn{background:none;border:0.5px solid #444;border-radius:6px;color:#fff;padding:6px 10px;font-family:inherit;font-size:11px;letter-spacing:.06em;cursor:pointer;}
-.back-btn:active{background:#333;}
+.topbar .logo-text{font-family:var(--cami-font-display);font-size:20px;letter-spacing:0;color:var(--cami-paper);font-weight:700;}
+.topbar .module-name{font-family:var(--cami-font-display);font-size:9px;color:var(--cami-orange);letter-spacing:.22em;text-transform:uppercase;font-weight:600;}
+.topbar-right{text-align:right;display:flex;flex-direction:column;gap:2px;}
+.topbar-user{font-family:var(--cami-font-display);font-size:9px;color:var(--cami-paper-on-navy);letter-spacing:.18em;text-transform:uppercase;font-weight:600;}
+.topbar-role{font-family:var(--cami-font-display);font-size:12px;font-weight:600;color:var(--cami-paper);margin-top:2px;letter-spacing:.04em;}
+.back-btn{background:rgba(250,246,238,.08);border:1px solid rgba(248,200,168,.22);border-radius:var(--cami-radius-sm);color:var(--cami-paper);padding:7px 12px;font-family:var(--cami-font-display);font-size:11px;letter-spacing:.06em;cursor:pointer;font-weight:500;transition:background .15s;}
+.back-btn:hover{background:rgba(243,121,51,.18);}
+.back-btn:active{background:var(--cami-orange);border-color:var(--cami-orange);}
 
 /* ── TABS ── */
 .tabs{background:#fff;border-bottom:0.5px solid var(--border);display:flex;overflow-x:auto;scrollbar-width:none;}
@@ -145,10 +149,10 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .dia-btn:active{transform:scale(.94);}
 .dia-num{font-size:9px;color:var(--muted);font-weight:400;}
 .dia-mark{font-size:13px;}
-.dia-btn.T{background:#3B6D11;color:#fff;border-color:#3B6D11;}
-.dia-btn.D{background:#888780;color:#fff;border-color:#888780;}
-.dia-btn.F{background:#A32D2D;color:#fff;border-color:#A32D2D;}
-.dia-btn.B{background:#1A1A18;color:#fff;border-color:#1A1A18;}
+.dia-btn.T{background:var(--cami-green);color:#fff;border-color:var(--cami-green);}
+.dia-btn.D{background:var(--cami-ink-soft);color:#fff;border-color:var(--cami-ink-soft);}
+.dia-btn.F{background:var(--cami-red);color:#fff;border-color:var(--cami-red);}
+.dia-btn.B{background:var(--cami-navy);color:#fff;border-color:var(--cami-navy);}
 
 .subsec{margin-top:10px;}
 .subsec-title{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
@@ -176,11 +180,11 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .legenda{display:flex;flex-wrap:wrap;gap:6px;background:var(--card);border:0.5px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;align-items:center;}
 .legenda-titulo{font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-right:4px;}
 .legenda-item{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.04em;}
-.legenda-chip{width:18px;height:18px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;font-family:'Courier New',monospace;}
-.legenda-chip.T{background:#3B6D11;}
-.legenda-chip.D{background:#888780;}
-.legenda-chip.F{background:#A32D2D;}
-.legenda-chip.B{background:#1A1A18;}
+.legenda-chip{width:18px;height:18px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;font-family:var(--cami-font-display);}
+.legenda-chip.T{background:var(--cami-green);}
+.legenda-chip.D{background:var(--cami-ink-soft);}
+.legenda-chip.F{background:var(--cami-red);}
+.legenda-chip.B{background:var(--cami-navy);}
 .legenda-chip.X{background:var(--bg);color:var(--muted);border:0.5px solid var(--border);}
 
 /* ── EMPTY STATE ── */
@@ -236,10 +240,10 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .as-option:active{background:var(--light);}
 .as-option-check{width:20px;font-size:14px;font-weight:700;color:var(--ok);}
 .as-option-chip{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px;flex-shrink:0;}
-.as-option-chip.T{background:#3B6D11;}
-.as-option-chip.D{background:#888780;}
-.as-option-chip.F{background:#A32D2D;}
-.as-option-chip.B{background:#1A1A18;}
+.as-option-chip.T{background:var(--cami-green);}
+.as-option-chip.D{background:var(--cami-ink-soft);}
+.as-option-chip.F{background:var(--cami-red);}
+.as-option-chip.B{background:var(--cami-navy);}
 .as-option-chip.X{background:var(--bg);color:var(--muted);border:0.5px solid var(--border);}
 .as-option-label{flex:1;font-size:14px;}
 .as-option-label b{font-weight:700;font-size:14px;}
@@ -292,9 +296,25 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
 .btn-placeholder{opacity:.5;cursor:not-allowed;pointer-events:none;background:var(--light);color:var(--muted);border:1px dashed var(--border);}
 .calc-placeholder-hint{margin-top:8px;font-size:11px;color:var(--muted);text-align:center;}
 
+
+/* ── Refinamientos sobre el theme ── */
+body.cami-themed{font-size:14px;}
+/* botones secundarios escolares → tokens */
+.btn{background:var(--cami-navy);color:var(--cami-paper);font-family:var(--cami-font-display);font-weight:600;letter-spacing:.06em;border-radius:var(--cami-radius);transition:background .15s;}
+.btn:hover{background:var(--cami-navy-2);}
+.btn-secondary{background:#fff;color:var(--cami-navy);border:1px solid var(--cami-rule);}
+.btn-secondary:hover{background:var(--cami-paper);}
+.btn-success{background:var(--cami-green);}
+.btn-danger{background:var(--cami-red);}
+.tab.active{color:var(--cami-navy);border-bottom-color:var(--cami-orange);}
+.pill.active{background:var(--cami-navy);border-color:var(--cami-navy);}
+.search-box:focus,.field-input:focus,.field-select:focus,.quincena-select:focus{border-color:var(--cami-orange);}
+.section-header{font-family:var(--cami-font-display);font-weight:600;letter-spacing:.14em;color:var(--cami-ink-soft);}
+.modal-title,.cap-status,.subsec-title,.empleado-cap-total-label,.field-label,.detail-label,.empty-state-title,.no-access-title{font-family:var(--cami-font-display);}
+.emp-name,.cap-proj,.empleado-cap-name,.ac-name,.empleado-cap-total-value{font-family:var(--cami-font-display);font-weight:600;}
 </style>
 </head>
-<body>
+<body class="cami-themed">
 
 <div class="topbar">
   <div class="topbar-left">
@@ -555,7 +575,7 @@ body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
       </div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
-          <input type="checkbox" id="nc-heredar" checked style="accent-color:#1A1A18;width:16px;height:16px;cursor:pointer;"/>
+          <input type="checkbox" id="nc-heredar" checked style="accent-color:var(--cami-navy);width:16px;height:16px;cursor:pointer;"/>
           Copiar empleados de la quincena anterior
         </label>
         <div class="field-help">Si esta obra ya tuvo nómina antes, traemos los mismos empleados sin marcas para que solo agregues días.</div>
